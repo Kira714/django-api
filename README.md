@@ -36,33 +36,33 @@ A Django REST API that plans cost-optimised fuel stops for any US road trip. Giv
 
 ```mermaid
 graph TD
-    Client["Client (Thunder Client / curl / Frontend)"]
+    Client["Client\nThunder Client / curl / Frontend"]
     View["Django View\nPOST /api/route/plan/"]
     Geocoder["Geocoder\nNominatim OSM"]
-    Router["Routing Engine\nGraphHopper API (primary)\nOSRM public (fallback)"]
+    Router["Routing Engine\nGraphHopper primary\nOSRM fallback"]
     DB["PostgreSQL\nFuelStation table\n150 stations"]
-    CSV["fuel_prices.csv\n(fallback if DB empty)"]
-    Cache["In-Memory Cache\nLocMemCache\ngeocodes + routes"]
+    CSV["fuel_prices.csv\nfallback if DB empty"]
+    Cache["In-Memory Cache\nLocMemCache\ngeocodes plus routes"]
     Optimizer["Fuel Optimiser\nGreedy Look-ahead"]
-    GeoJSON["GeoJSON Builder\nFeatureCollection\nLineString + Points"]
-    Response["JSON Response\nroute · fuel_stops · map_data · total_cost"]
+    GeoJSON["GeoJSON Builder\nFeatureCollection\nLineString plus Points"]
+    Response["JSON Response\nroute, fuel_stops, map_data, total_cost"]
 
-    Client -->|"POST JSON"| View
+    Client -->|POST JSON| View
     View --> Geocoder
-    Geocoder -->|"lat/lon"| Cache
-    Cache -->|"cached coords"| View
+    Geocoder -->|lat and lon| Cache
+    Cache -->|cached coords| View
     View --> Router
-    Router -->|"route geometry\n+ distance"| Cache
+    Router -->|route geometry and distance| Cache
     View --> DB
-    DB -->|"no rows"| CSV
-    DB -->|"FuelStation list"| Optimizer
-    CSV -->|"FuelStation list"| Optimizer
+    DB -->|no rows| CSV
+    DB -->|FuelStation list| Optimizer
+    CSV -->|FuelStation list| Optimizer
     Router --> Optimizer
     Optimizer --> GeoJSON
     GeoJSON --> Response
     Response --> Client
 
-    style GraphHopper fill:#4A90D9,color:#fff
+    style Router fill:#4A90D9,color:#fff
     style DB fill:#336791,color:#fff
     style Cache fill:#f0a500,color:#fff
     style Optimizer fill:#27ae60,color:#fff
@@ -92,40 +92,40 @@ graph TD
 sequenceDiagram
     participant C as Client
     participant V as View
-    participant G as Nominatim (Geocode)
+    participant G as Nominatim
     participant GH as GraphHopper
-    participant OS as OSRM (fallback)
+    participant OS as OSRM fallback
     participant DB as PostgreSQL
     participant OPT as Optimiser
     participant GJ as GeoJSON Builder
 
-    C->>V: POST /api/route/plan/\n{"start":"Denver, CO","finish":"Phoenix, AZ"}
-    V->>G: geocode "Denver, CO, USA"
-    G-->>V: (39.739, -104.984)
-    V->>G: geocode "Phoenix, AZ, USA"
-    G-->>V: (33.448, -112.074)
+    C->>V: POST /api/route/plan/
+    V->>G: geocode start location
+    G-->>V: lat lon for start
+    V->>G: geocode finish location
+    G-->>V: lat lon for finish
 
-    V->>GH: GET /api/1/route?point=39.739,-104.984&point=33.448,-112.074
-    alt GraphHopper succeeds
-        GH-->>V: distance, duration, GeoJSON geometry
-    else GraphHopper fails / no key
-        V->>OS: GET /route/v1/driving/-104.984,39.739;-112.074,33.448
-        OS-->>V: distance, duration, GeoJSON geometry
+    alt GraphHopper key present
+        V->>GH: route request with coordinates
+        GH-->>V: distance, duration, geometry
+    else No key or limit reached
+        V->>OS: route request with coordinates
+        OS-->>V: distance, duration, geometry
     end
 
-    V->>DB: SELECT * FROM routing_fuelstation
-    DB-->>V: 150 FuelStation rows
+    V->>DB: load all FuelStation rows
+    DB-->>V: 150 station records
 
-    V->>OPT: project_stations_onto_route(geometry, stations)
-    OPT-->>V: stations near route, sorted by mile marker
+    V->>OPT: project stations onto route polyline
+    OPT-->>V: nearby stations sorted by mile marker
 
-    V->>OPT: optimize_fuel_plan(distance, nearby_stations, 500mi, 10mpg)
-    OPT-->>V: ordered stop list + total cost
+    V->>OPT: run greedy fuel optimiser
+    OPT-->>V: ordered stop list and total cost
 
-    V->>GJ: build_geojson(geometry, start, finish, stops)
-    GJ-->>V: FeatureCollection
+    V->>GJ: build GeoJSON FeatureCollection
+    GJ-->>V: route line plus stop pins
 
-    V-->>C: 200 OK — route + fuel_stops + map_data + total_fuel_cost
+    V-->>C: 200 OK with route, fuel_stops, map_data, warnings
 ```
 
 ---
@@ -354,15 +354,15 @@ Render gives you a free managed PostgreSQL + a free web service — no credit ca
 ```mermaid
 flowchart TD
     A[Push code to GitHub] --> B[Login to render.com]
-    B --> C[New → Blueprint]
+    B --> C[New then Blueprint]
     C --> D[Connect GitHub repo\nRender reads render.yaml]
-    D --> E[Render creates:\n• PostgreSQL DB\n• Web service]
-    E --> F[Go to Web Service\n→ Environment tab]
-    F --> G[Set GRAPHHOPPER_API_KEY\nto your key]
-    G --> H[Manual Deploy → Deploy latest commit]
-    H --> I[build.sh runs:\npip install\nmigrate\nload_fuel_stations\ncollectstatic]
-    I --> J[Gunicorn starts\nApp is live!]
-    J --> K[Copy your .onrender.com URL\nand hit the API]
+    D --> E[Render creates PostgreSQL DB\nand Web service]
+    E --> F[Go to Web Service Environment tab]
+    F --> G[Set GRAPHHOPPER_API_KEY to your key]
+    G --> H[Deploy latest commit]
+    H --> I[build.sh runs\npip install, migrate\nload_fuel_stations, collectstatic]
+    I --> J[Gunicorn starts\nApp is live]
+    J --> K[Copy your onrender.com URL\nand hit the API]
 ```
 
 #### 1. Push code to GitHub

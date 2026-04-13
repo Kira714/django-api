@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Django
+*.sqlite3
+staticfiles/
+media/
+
+# Environment secrets — never commit
+.env
+
+# IDE / OS
+.vscode/
+.idea/
+*.DS_Store
+*.swp
+
+# Render / build artifacts
+*.log
