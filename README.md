@@ -96,7 +96,7 @@ sequenceDiagram
     participant GH as GraphHopper
     participant OS as OSRM fallback
     participant DB as PostgreSQL
-    participant OPT as Optimiser
+    participant FO as Fuel Optimiser
     participant GJ as GeoJSON Builder
 
     C->>V: POST /api/route/plan/
@@ -116,11 +116,11 @@ sequenceDiagram
     V->>DB: load all FuelStation rows
     DB-->>V: 150 station records
 
-    V->>OPT: project stations onto route polyline
-    OPT-->>V: nearby stations sorted by mile marker
+    V->>FO: project stations onto route polyline
+    FO-->>V: nearby stations sorted by mile marker
 
-    V->>OPT: run greedy fuel optimiser
-    OPT-->>V: ordered stop list and total cost
+    V->>FO: run greedy fuel optimiser
+    FO-->>V: ordered stop list and total cost
 
     V->>GJ: build GeoJSON FeatureCollection
     GJ-->>V: route line plus stop pins
