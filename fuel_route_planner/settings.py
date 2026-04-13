@@ -69,10 +69,27 @@ TEMPLATES = [
 WSGI_APPLICATION = "fuel_route_planner.wsgi.application"
 
 # ── Database ──────────────────────────────────────────────────────────────────
-# Prefer PostgreSQL when DB_HOST is set; fall back to SQLite for local dev
-# without Docker.
+# Priority:
+#   1. DATABASE_URL  — full postgres:// URL (Render internal URL, Railway, etc.)
+#   2. DB_HOST       — individual host/name/user/password/port vars
+#   3. SQLite        — local dev fallback when neither is set
+_database_url = os.environ.get("DATABASE_URL", "")
 _db_host = os.environ.get("DB_HOST", "")
-if _db_host:
+
+if _database_url:
+    from urllib.parse import urlparse as _urlparse
+    _u = _urlparse(_database_url)
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": _u.path.lstrip("/"),
+            "USER": _u.username,
+            "PASSWORD": _u.password,
+            "HOST": _u.hostname,
+            "PORT": _u.port or 5432,
+        }
+    }
+elif _db_host:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
