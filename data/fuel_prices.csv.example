@@ -1,0 +1,6 @@
+station_id,station_name,latitude,longitude,price_per_gallon
+1,Example Station Denver,39.7392,-104.9903,3.49
+2,Example Station Colorado Springs,38.8339,-104.8214,3.35
+3,Example Station Albuquerque,35.0844,-106.6504,3.28
+4,Example Station Flagstaff,35.1983,-111.6513,3.32
+5,Example Station Phoenix,33.4484,-112.0740,3.45

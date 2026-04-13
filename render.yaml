@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: fuel-route-planner
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn fuel_route_planner.wsgi:application"
+    plan: free
+
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true          # Render auto-generates a secure value
+
+      - key: DEBUG
+        value: "False"
+
+      - key: GRAPHHOPPER_API_KEY
+        sync: false                  # You paste this manually in the Render dashboard
+
+      - key: DB_HOST
+        fromDatabase:
+          name: fuel-route-planner-db
+          property: host
+
+      - key: DB_NAME
+        fromDatabase:
+          name: fuel-route-planner-db
+          property: database
+
+      - key: DB_USER
+        fromDatabase:
+          name: fuel-route-planner-db
+          property: user
+
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: fuel-route-planner-db
+          property: password
+
+      - key: DB_PORT
+        fromDatabase:
+          name: fuel-route-planner-db
+          property: port
+
+      # RENDER_EXTERNAL_HOSTNAME is injected automatically by Render.
+      # settings.py reads it and appends it to ALLOWED_HOSTS — no manual action needed.
+
+databases:
+  - name: fuel-route-planner-db
+    plan: free                       # 1 GB free PostgreSQL on Render

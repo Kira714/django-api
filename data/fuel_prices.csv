@@ -1,0 +1,151 @@
+station_id,station_name,latitude,longitude,price_per_gallon
+1,Pilot Travel Center - Portland ME,43.6615,-70.2553,3.89
+2,Love's Travel Stop - Augusta ME,44.3106,-69.7795,3.91
+3,TA Travel Center - Bangor ME,44.8012,-68.7778,3.88
+4,Pilot - Manchester NH,42.9956,-71.4548,3.79
+5,Love's - Concord NH,43.2081,-71.5376,3.82
+6,TA - Burlington VT,44.4759,-73.2121,3.85
+7,Pilot - Springfield MA,42.1015,-72.5898,3.72
+8,Love's - Worcester MA,42.2626,-71.8023,3.75
+9,TA - Providence RI,41.8240,-71.4128,3.68
+10,Pilot - New Haven CT,41.3083,-72.9279,3.71
+11,Love's - Hartford CT,41.7637,-72.6851,3.74
+12,TA - New York (Jersey City) NJ,40.7178,-74.0431,3.99
+13,Pilot - Newark NJ,40.7357,-74.1724,3.97
+14,Love's - Trenton NJ,40.2171,-74.7429,3.88
+15,TA - Philadelphia PA,39.9526,-75.1652,3.81
+16,Pilot - Harrisburg PA,40.2732,-76.8867,3.69
+17,Love's - Pittsburgh PA,40.4406,-79.9959,3.62
+18,TA - Erie PA,42.1292,-80.0851,3.58
+19,Pilot - Baltimore MD,39.2904,-76.6122,3.76
+20,Love's - Washington DC Area (Manassas VA),38.7509,-77.4753,3.73
+21,TA - Richmond VA,37.5407,-77.4360,3.65
+22,Pilot - Roanoke VA,37.2710,-79.9414,3.61
+23,Love's - Charlotte NC,35.2271,-80.8431,3.55
+24,TA - Greensboro NC,36.0726,-79.7920,3.52
+25,Pilot - Raleigh NC,35.7796,-78.6382,3.54
+26,Love's - Fayetteville NC,35.0527,-78.8784,3.51
+27,TA - Columbia SC,34.0007,-81.0348,3.48
+28,Pilot - Charleston SC,32.7765,-79.9311,3.53
+29,Love's - Savannah GA,32.0809,-81.0912,3.45
+30,TA - Jacksonville FL,30.3322,-81.6557,3.49
+31,Pilot - Daytona Beach FL,29.2108,-81.0228,3.52
+32,Love's - Orlando FL,28.5383,-81.3792,3.55
+33,TA - Tampa FL,27.9506,-82.4572,3.57
+34,Pilot - Miami FL,25.7617,-80.1918,3.68
+35,Love's - Atlanta GA,33.7490,-84.3880,3.42
+36,TA - Birmingham AL,33.5186,-86.8104,3.39
+37,Pilot - Montgomery AL,32.3668,-86.2999,3.36
+38,Love's - Mobile AL,30.6954,-88.0399,3.33
+39,TA - New Orleans LA,29.9511,-90.0715,3.38
+40,Pilot - Baton Rouge LA,30.4515,-91.1871,3.35
+41,Love's - Lafayette LA,30.2241,-92.0198,3.32
+42,TA - Houston TX (East),29.7604,-95.0527,3.29
+43,Pilot - Houston TX (West),29.7604,-95.5018,3.27
+44,Love's - San Antonio TX,29.4241,-98.4936,3.21
+45,TA - Austin TX,30.2672,-97.7431,3.24
+46,Pilot - Dallas TX (East),32.7767,-96.4597,3.19
+47,Love's - Dallas TX (West),32.7767,-97.1512,3.17
+48,TA - Fort Worth TX,32.7555,-97.3308,3.18
+49,Pilot - Amarillo TX,35.2220,-101.8313,3.22
+50,Love's - Lubbock TX,33.5779,-101.8552,3.20
+51,TA - El Paso TX,31.7619,-106.4850,3.31
+52,Pilot - Tucson AZ,32.2226,-110.9747,3.38
+53,Love's - Phoenix AZ,33.4484,-112.0740,3.45
+54,TA - Flagstaff AZ,35.1983,-111.6513,3.32
+55,Pilot - Albuquerque NM,35.0844,-106.6504,3.28
+56,Love's - Santa Fe NM,35.6870,-105.9378,3.30
+57,TA - Colorado Springs CO,38.8339,-104.8214,3.35
+58,Pilot - Denver CO,39.7392,-104.9903,3.49
+59,Love's - Pueblo CO,38.2544,-104.6091,3.33
+60,TA - Trinidad CO,37.1695,-104.5003,3.30
+61,Pilot - Las Vegas NV (East),36.1699,-114.9951,3.55
+62,Love's - Las Vegas NV (West),36.1699,-115.2398,3.53
+63,TA - Barstow CA,34.8958,-117.0228,4.12
+64,Pilot - Los Angeles CA (East),34.0195,-117.9000,4.45
+65,Love's - Los Angeles CA (Downtown),34.0522,-118.2437,4.52
+66,TA - San Diego CA,32.7157,-117.1611,4.49
+67,Pilot - Bakersfield CA,35.3733,-119.0187,4.39
+68,Love's - Fresno CA,36.7378,-119.7871,4.42
+69,TA - Sacramento CA,38.5816,-121.4944,4.55
+70,Pilot - San Francisco CA,37.7749,-122.4194,4.72
+71,Love's - Oakland CA,37.8044,-122.2712,4.68
+72,TA - San Jose CA,37.3382,-121.8863,4.61
+73,Pilot - Stockton CA,37.9577,-121.2908,4.38
+74,Love's - Modesto CA,37.6391,-120.9969,4.35
+75,TA - Reno NV,39.5296,-119.8138,3.82
+76,Pilot - Salt Lake City UT,40.7608,-111.8910,3.61
+77,Love's - Provo UT,40.2338,-111.6585,3.58
+78,TA - Ogden UT,41.2230,-111.9738,3.60
+79,Pilot - Boise ID,43.6150,-116.2023,3.65
+80,Love's - Twin Falls ID,42.5629,-114.4609,3.62
+81,TA - Pocatello ID,42.8713,-112.4455,3.67
+82,Pilot - Portland OR,45.5051,-122.6750,4.05
+83,Love's - Salem OR,44.9429,-123.0351,4.08
+84,TA - Eugene OR,44.0521,-123.0868,4.11
+85,Pilot - Seattle WA,47.6062,-122.3321,4.25
+86,Love's - Tacoma WA,47.2529,-122.4443,4.22
+87,TA - Spokane WA,47.6588,-117.4260,3.95
+88,Pilot - Billings MT,45.7833,-108.5007,3.72
+89,Love's - Missoula MT,46.8721,-113.9940,3.75
+90,TA - Great Falls MT,47.5002,-111.3008,3.78
+91,Pilot - Cheyenne WY,41.1400,-104.8202,3.45
+92,Love's - Casper WY,42.8666,-106.3131,3.48
+93,TA - Rock Springs WY,41.5875,-109.2029,3.51
+94,Pilot - Rapid City SD,44.0805,-103.2310,3.38
+95,Love's - Sioux Falls SD,43.5446,-96.7311,3.29
+96,TA - Aberdeen SD,45.4647,-98.4865,3.32
+97,Pilot - Fargo ND,46.8772,-96.7898,3.35
+98,Love's - Bismarck ND,46.8083,-100.7837,3.38
+99,TA - Minot ND,48.2330,-101.2923,3.41
+100,Pilot - Minneapolis MN,44.9778,-93.2650,3.42
+101,Love's - Rochester MN,44.0121,-92.4802,3.39
+102,TA - Duluth MN,46.7867,-92.1005,3.45
+103,Pilot - Des Moines IA,41.5868,-93.6250,3.35
+104,Love's - Cedar Rapids IA,41.9779,-91.6656,3.32
+105,TA - Davenport IA,41.5236,-90.5776,3.29
+106,Pilot - Chicago IL (South),41.7508,-87.7210,3.79
+107,Love's - Chicago IL (West),41.8781,-87.9298,3.82
+108,TA - Rockford IL,42.2711,-89.0940,3.65
+109,Pilot - Springfield IL,39.7817,-89.6501,3.58
+110,Love's - Champaign IL,40.1164,-88.2434,3.55
+111,TA - Peoria IL,40.6936,-89.5890,3.52
+112,Pilot - St. Louis MO,38.6270,-90.1994,3.48
+113,Love's - Kansas City MO,39.0997,-94.5786,3.42
+114,TA - Springfield MO,37.2153,-93.2982,3.39
+115,Pilot - Joplin MO,37.0842,-94.5133,3.36
+116,Love's - Tulsa OK,36.1540,-95.9928,3.28
+117,TA - Oklahoma City OK,35.4676,-97.5164,3.25
+118,Pilot - Wichita KS,37.6872,-97.3301,3.22
+119,Love's - Topeka KS,39.0558,-95.6890,3.25
+120,TA - Salina KS,38.8403,-97.6114,3.20
+121,Pilot - Lincoln NE,40.8136,-96.7026,3.28
+122,Love's - Omaha NE,41.2565,-95.9345,3.31
+123,TA - Grand Island NE,40.9264,-98.3420,3.25
+124,Pilot - Memphis TN,35.1495,-90.0490,3.38
+125,Love's - Nashville TN,36.1627,-86.7816,3.42
+126,TA - Knoxville TN,35.9606,-83.9207,3.45
+127,Pilot - Chattanooga TN,35.0456,-85.3097,3.41
+128,Love's - Huntsville AL,34.7304,-86.5861,3.38
+129,TA - Louisville KY,38.2527,-85.7585,3.48
+130,Pilot - Lexington KY,38.0406,-84.5037,3.51
+131,Love's - Cincinnati OH,39.1031,-84.5120,3.55
+132,TA - Columbus OH,39.9612,-82.9988,3.52
+133,Pilot - Cleveland OH,41.4993,-81.6944,3.58
+134,Love's - Toledo OH,41.6528,-83.5379,3.55
+135,TA - Detroit MI,42.3314,-83.0458,3.62
+136,Pilot - Grand Rapids MI,42.9634,-85.6681,3.59
+137,Love's - Lansing MI,42.7325,-84.5555,3.61
+138,TA - Flint MI,43.0125,-83.6875,3.63
+139,Pilot - Indianapolis IN,39.7684,-86.1581,3.49
+140,Love's - Fort Wayne IN,41.0793,-85.1394,3.52
+141,TA - South Bend IN,41.6764,-86.2520,3.55
+142,Pilot - Milwaukee WI,43.0389,-87.9065,3.62
+143,Love's - Madison WI,43.0731,-89.4012,3.59
+144,TA - Green Bay WI,44.5133,-88.0133,3.63
+145,Pilot - Little Rock AR,34.7465,-92.2896,3.35
+146,Love's - Fort Smith AR,35.3859,-94.3985,3.32
+147,TA - Shreveport LA,32.5252,-93.7502,3.38
+148,Pilot - Jackson MS,32.2988,-90.1848,3.35
+149,Love's - Meridian MS,32.3643,-88.7037,3.38
+150,TA - Birmingham AL (I-20),33.5186,-86.8104,3.39
