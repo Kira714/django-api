@@ -37,6 +37,22 @@ DEFAULT_MAX_RANGE_MILES = 500.0
 DEFAULT_MPG = 10.0
 NEAR_ROUTE_THRESHOLD_MILES = 30.0
 LAT_LON_PADDING_DEGREES = 0.5
+EIA_ENDPOINT = "https://api.eia.gov/v2/petroleum/pri/gnd/data/"
+EIA_PRODUCT_REGULAR = "EPM0"
+
+STATE_TO_DUOAREA: dict[str, str] = {
+    "AK": "SAK", "AL": "SAL", "AR": "SAR", "AZ": "SAZ", "CA": "SCA",
+    "CO": "SCO", "CT": "SCT", "DC": "SDC", "DE": "SDE", "FL": "SFL",
+    "GA": "SGA", "HI": "SHI", "IA": "SIA", "ID": "SID", "IL": "SIL",
+    "IN": "SIN", "KS": "SKS", "KY": "SKY", "LA": "SLA", "MA": "SMA",
+    "MD": "SMD", "ME": "SME", "MI": "SMI", "MN": "SMN", "MO": "SMO",
+    "MS": "SMS", "MT": "SMT", "NC": "SNC", "ND": "SND", "NE": "SNE",
+    "NH": "SNH", "NJ": "SNJ", "NM": "SNM", "NV": "SNV", "NY": "SNY",
+    "OH": "SOH", "OK": "SOK", "OR": "SOR", "PA": "SPA", "RI": "SRI",
+    "SC": "SSC", "SD": "SSD", "TN": "STN", "TX": "STX", "UT": "SUT",
+    "VA": "SVA", "VT": "SVT", "WA": "SWA", "WI": "SWI", "WV": "SWV",
+    "WY": "SWY",
+}
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -77,6 +93,79 @@ def _load_stations_from_db() -> list[FuelStationData]:
 def load_fuel_stations() -> list[FuelStationData]:
     """Return station list from the FuelStation table."""
     return _load_stations_from_db()
+
+
+def sync_prices_from_eia() -> dict[str, int]:
+    """
+    Pull latest EIA state-level prices and persist into FuelStation.
+    Returns summary counts for diagnostics.
+    """
+    api_key = getattr(settings, "EIA_API_KEY", "")
+    if not api_key:
+        raise ValueError("EIA_API_KEY is not configured.")
+
+    from routing.models import FuelStation
+
+    states_in_db = set(
+        FuelStation.objects.exclude(state="")
+        .values_list("state", flat=True)
+        .distinct()
+    )
+    duoareas = [STATE_TO_DUOAREA[s] for s in states_in_db if s in STATE_TO_DUOAREA]
+    if not duoareas:
+        raise ValueError("No mappable station states found for EIA sync.")
+
+    params: list[tuple[str, str]] = [
+        ("api_key", api_key),
+        ("frequency", "weekly"),
+        ("data[0]", "value"),
+        ("facets[product][]", EIA_PRODUCT_REGULAR),
+        ("sort[0][column]", "period"),
+        ("sort[0][direction]", "desc"),
+        ("length", str(max(len(duoareas) * 2, 50))),
+    ]
+    for da in duoareas:
+        params.append(("facets[duoarea][]", da))
+
+    response = requests.get(
+        EIA_ENDPOINT,
+        params=params,
+        headers={"User-Agent": "fuel-route-planner/1.0"},
+        timeout=15,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    rows = payload.get("response", {}).get("data", [])
+    if not rows:
+        raise ValueError("EIA API returned no rows.")
+
+    latest: dict[str, float] = {}
+    for row in rows:
+        da = row.get("duoarea", "")
+        val = row.get("value")
+        if da and val is not None and da not in latest:
+            try:
+                latest[da] = float(val)
+            except (TypeError, ValueError):
+                continue
+
+    duoarea_to_state = {v: k for k, v in STATE_TO_DUOAREA.items()}
+    updated_states = 0
+    updated_stations = 0
+    for duoarea, price in latest.items():
+        state = duoarea_to_state.get(duoarea)
+        if not state:
+            continue
+        count = FuelStation.objects.filter(state=state).update(price_per_gallon=round(price, 3))
+        if count:
+            updated_states += 1
+            updated_stations += count
+
+    return {
+        "states_in_db": len(states_in_db),
+        "states_with_eia_price": updated_states,
+        "stations_updated": updated_stations,
+    }
 
 
 # ── Geo utilities ─────────────────────────────────────────────────────────────

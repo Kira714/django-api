@@ -124,6 +124,9 @@ FUEL_PRICES_CSV_PATH = os.environ.get(
     "FUEL_PRICES_CSV_PATH", str(BASE_DIR / "fuel-prices-for-be-assessment.csv")
 )
 
+# Optional EIA key for the alternate "live EIA pricing" planning endpoint.
+EIA_API_KEY = os.environ.get("EIA_API_KEY", "")
+
 # ── Cache ─────────────────────────────────────────────────────────────────────
 CACHES = {
     "default": {

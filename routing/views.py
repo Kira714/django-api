@@ -7,7 +7,12 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from routing.services import DEFAULT_MAX_RANGE_MILES, DEFAULT_MPG, build_route_plan
+from routing.services import (
+    DEFAULT_MAX_RANGE_MILES,
+    DEFAULT_MPG,
+    build_route_plan,
+    sync_prices_from_eia,
+)
 
 _GRAPHHOPPER_WARNING = (
     "Routing powered by GraphHopper free tier (500 req/day). "
@@ -19,6 +24,9 @@ _OSRM_WARNING = (
     "Routing powered by the public OSRM demo server (no API key). "
     "This server has no uptime SLA and may be slow under heavy load. "
     "Fuel prices are synced from the provided CSV dataset by state averages."
+)
+_EIA_WARNING = (
+    "Prices were refreshed from EIA state averages for this request."
 )
 
 
@@ -54,6 +62,16 @@ def route_planner_ui(request):
 @csrf_exempt
 @require_POST
 def plan_route_view(request):
+    return _plan_route_impl(request, use_eia_prices=False)
+
+
+@csrf_exempt
+@require_POST
+def plan_route_eia_view(request):
+    return _plan_route_impl(request, use_eia_prices=True)
+
+
+def _plan_route_impl(request, use_eia_prices: bool):
     try:
         payload = json.loads(request.body.decode("utf-8"))
     except json.JSONDecodeError:
@@ -100,6 +118,10 @@ def plan_route_view(request):
         )
 
     try:
+        eia_sync_info = None
+        if use_eia_prices:
+            eia_sync_info = sync_prices_from_eia()
+
         result = build_route_plan(
             start_location=start,
             finish_location=finish,
@@ -112,8 +134,13 @@ def plan_route_view(request):
         return JsonResponse({"error": f"Unable to plan route: {exc}"}, status=502)
 
     engine = result.get("route", {}).get("engine", "osrm")
-    result["warnings"] = [
+    warnings = [
         _GRAPHHOPPER_WARNING if engine == "graphhopper" else _OSRM_WARNING
     ]
+    if use_eia_prices:
+        warnings.append(_EIA_WARNING)
+        if eia_sync_info is not None:
+            result["eia_sync"] = eia_sync_info
+    result["warnings"] = warnings
 
     return JsonResponse(result, status=200)
