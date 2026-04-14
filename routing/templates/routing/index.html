@@ -124,6 +124,31 @@
       margin: 0;
       padding-left: 18px;
     }
+    .raw-output {
+      background: #0b1220;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 12px;
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.45;
+      max-height: 380px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    .swagger-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .raw-block-title {
+      margin: 0 0 8px 0;
+      color: #93c5fd;
+      font-size: 13px;
+      font-weight: 600;
+    }
     code {
       background: #0b1220;
       padding: 2px 6px;
@@ -176,6 +201,21 @@
     </div>
 
     <div class="card">
+      <h3>API Inspector</h3>
+      <p class="meta">Swagger-style request/response view for the latest call.</p>
+      <div class="swagger-grid">
+        <div>
+          <p class="raw-block-title">Request</p>
+          <pre id="rawRequest" class="raw-output">No request yet.</pre>
+        </div>
+        <div>
+          <p class="raw-block-title">Response</p>
+          <pre id="rawResponse" class="raw-output">No response yet.</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <h3>Trip Summary</h3>
       <p id="summary" class="meta">No request yet.</p>
       <ol id="stops" class="stop-list"></ol>
@@ -184,6 +224,7 @@
     <div class="card">
       <div id="map"></div>
     </div>
+
   </div>
 
   <script
@@ -358,6 +399,8 @@
       const status = document.getElementById("status");
       const error = document.getElementById("error");
       const summary = document.getElementById("summary");
+      const rawRequest = document.getElementById("rawRequest");
+      const rawResponse = document.getElementById("rawResponse");
 
       error.textContent = "";
       btn.disabled = true;
@@ -365,12 +408,38 @@
 
       try {
         const payload = buildPayload();
+        const requestHeaders = { "Content-Type": "application/json" };
+        rawRequest.textContent = JSON.stringify(
+          {
+            method: "POST",
+            url: apiEndpoint,
+            headers: requestHeaders,
+            body: payload,
+          },
+          null,
+          2
+        );
+
         const res = await fetch(apiEndpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: requestHeaders,
           body: JSON.stringify(payload),
         });
         const data = await res.json();
+        const responseHeaders = {};
+        res.headers.forEach((value, key) => {
+          responseHeaders[key] = value;
+        });
+        rawResponse.textContent = JSON.stringify(
+          {
+            status: res.status,
+            ok: res.ok,
+            headers: responseHeaders,
+            body: data,
+          },
+          null,
+          2
+        );
 
         if (!res.ok) {
           throw new Error(JSON.stringify(data, null, 2));
@@ -386,6 +455,14 @@
       } catch (err) {
         status.textContent = "Failed.";
         error.textContent = err.message || String(err);
+        rawResponse.textContent = JSON.stringify(
+          {
+            status: "request_failed",
+            error: err.message || String(err),
+          },
+          null,
+          2
+        );
       } finally {
         btn.disabled = false;
       }
