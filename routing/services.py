@@ -35,6 +35,7 @@ MILES_PER_METER = 0.000621371
 EARTH_RADIUS_MILES = 3958.8
 DEFAULT_MAX_RANGE_MILES = 500.0
 DEFAULT_MPG = 10.0
+BENCHMARK_MPG = 10.0
 NEAR_ROUTE_THRESHOLD_MILES = 30.0
 LAT_LON_PADDING_DEGREES = 0.5
 EIA_ENDPOINT = "https://api.eia.gov/v2/petroleum/pri/gnd/data/"
@@ -607,6 +608,15 @@ def build_route_plan(
         max_range_miles=max_range_miles,
         mpg=mpg,
     )
+    # Benchmark spend for easier comparison across custom vehicle settings.
+    benchmark_stop_plan, benchmark_total_cost = _optimize_fuel_plan(
+        route_distance_miles=route_distance_miles,
+        stations=nearby,
+        start_coords=start_coords,
+        finish_coords=finish_coords,
+        max_range_miles=max_range_miles,
+        mpg=BENCHMARK_MPG,
+    )
 
     geojson = _build_geojson(
         route_geometry=route["geometry"],
@@ -638,5 +648,10 @@ def build_route_plan(
         },
         "fuel_stops": stop_plan,
         "total_fuel_cost": total_cost,
+        "total_fuel_cost_at_10_mpg": benchmark_total_cost,
+        "benchmark_vehicle": {
+            "mpg": BENCHMARK_MPG,
+            "fuel_stops": benchmark_stop_plan,
+        },
         "map_data": geojson,
     }
