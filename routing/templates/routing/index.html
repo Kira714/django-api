@@ -52,6 +52,44 @@
       background: #0b1220;
       color: #e2e8f0;
     }
+    .combo {
+      position: relative;
+    }
+    .suggestions {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      background: #0b1220;
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+      z-index: 1200;
+      display: none;
+    }
+    .suggestions.open {
+      display: block;
+    }
+    .suggestion-item {
+      padding: 10px;
+      border-bottom: 1px solid #1e293b;
+      cursor: pointer;
+      font-size: 14px;
+      color: #e2e8f0;
+    }
+    .suggestion-item:last-child {
+      border-bottom: 0;
+    }
+    .suggestion-item:hover {
+      background: #1e293b;
+    }
+    .suggestion-empty {
+      padding: 10px;
+      color: #94a3b8;
+      font-size: 13px;
+    }
     button {
       margin-top: 12px;
       padding: 10px 16px;
@@ -103,11 +141,17 @@
       <div class="grid">
         <div>
           <label for="start">Start location</label>
-          <input id="start" list="locationOptions" value="Denver, CO" />
+          <div class="combo">
+            <input id="start" value="Denver, CO" autocomplete="off" />
+            <div id="startSuggestions" class="suggestions"></div>
+          </div>
         </div>
         <div>
           <label for="finish">Finish location</label>
-          <input id="finish" list="locationOptions" value="Phoenix, AZ" />
+          <div class="combo">
+            <input id="finish" value="Phoenix, AZ" autocomplete="off" />
+            <div id="finishSuggestions" class="suggestions"></div>
+          </div>
         </div>
         <div>
           <label for="maxRange">Max range miles (optional)</label>
@@ -130,11 +174,6 @@
       <p id="status" class="meta"></p>
       <p id="error" class="error"></p>
     </div>
-    <datalist id="locationOptions">
-      {% for location in location_suggestions %}
-      <option value="{{ location }}"></option>
-      {% endfor %}
-    </datalist>
 
     <div class="card">
       <h3>Trip Summary</h3>
@@ -152,7 +191,12 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
+  {{ location_suggestions|json_script:"locationSuggestionsData" }}
   <script>
+    const locationSuggestions = JSON.parse(
+      document.getElementById("locationSuggestionsData").textContent
+    );
+
     const apiEndpoint = `${window.location.origin}/api/route/plan/`;
     document.getElementById("apiEndpoint").textContent = apiEndpoint;
 
@@ -166,6 +210,54 @@
     }).addTo(map);
 
     const layers = L.layerGroup().addTo(map);
+
+    function setupThemedDropdown(inputId, suggestionsId) {
+      const input = document.getElementById(inputId);
+      const box = document.getElementById(suggestionsId);
+
+      function filteredValues() {
+        const q = input.value.trim().toLowerCase();
+        const values = q
+          ? locationSuggestions.filter((v) => v.toLowerCase().includes(q))
+          : locationSuggestions;
+        return values.slice(0, 20);
+      }
+
+      function renderList() {
+        const values = filteredValues();
+        box.innerHTML = "";
+        if (!values.length) {
+          const empty = document.createElement("div");
+          empty.className = "suggestion-empty";
+          empty.textContent = "No matching locations";
+          box.appendChild(empty);
+          return;
+        }
+        values.forEach((value) => {
+          const item = document.createElement("div");
+          item.className = "suggestion-item";
+          item.textContent = value;
+          item.addEventListener("mousedown", (ev) => {
+            ev.preventDefault();
+            input.value = value;
+            box.classList.remove("open");
+          });
+          box.appendChild(item);
+        });
+      }
+
+      input.addEventListener("focus", () => {
+        renderList();
+        box.classList.add("open");
+      });
+      input.addEventListener("input", () => {
+        renderList();
+        box.classList.add("open");
+      });
+      input.addEventListener("blur", () => {
+        setTimeout(() => box.classList.remove("open"), 120);
+      });
+    }
 
     function parseOptionalNumber(value) {
       if (!value || String(value).trim() === "") return null;
@@ -299,6 +391,8 @@
       }
     }
 
+    setupThemedDropdown("start", "startSuggestions");
+    setupThemedDropdown("finish", "finishSuggestions");
     document.getElementById("hitBtn").addEventListener("click", hitApi);
   </script>
 </body>
