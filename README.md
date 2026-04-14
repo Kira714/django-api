@@ -9,7 +9,7 @@ A Django REST API that plans cost-optimised fuel stops for any US road trip. Giv
 > | **GraphHopper** | 500 req/day | Routing falls back to OSRM automatically — no crash, but slower |
 > | **OSRM public server** | No SLA, shared | Routing may time out; self-host OSRM for production |
 > | **Nominatim (geocoding)** | Fair use only | Geocoding fails for high-volume usage |
-> | **Fuel prices (CSV)** | Static snapshot | Prices go stale immediately — integrate a live feed for accuracy |
+> | **Fuel prices (EIA API)** | Weekly state averages | State-level (not station-level), can lag local pump prices |
 >
 > Every API response includes a `warnings` field that tells you which engine served the request and reminds you of these constraints.
 
@@ -24,7 +24,7 @@ A Django REST API that plans cost-optimised fuel stops for any US road trip. Giv
 - [Accuracy Analysis](#accuracy-analysis)
 - [Project Structure](#project-structure)
 - [Setup & Run](#setup--run)
-- [Docker (with PostgreSQL)](#docker-with-postgresql)
+- [Docker (local PostgreSQL)](#docker-local-postgresql)
 - [Deploy to Render](#deploy-to-render)
 - [API Reference](#api-reference)
 - [Full Response Example](#full-response-example)
@@ -40,8 +40,8 @@ graph TD
     View["Django View\nPOST /api/route/plan/"]
     Geocoder["Geocoder\nNominatim OSM"]
     Router["Routing Engine\nGraphHopper primary\nOSRM fallback"]
-    DB["PostgreSQL\nFuelStation table\n150 stations"]
-    CSV["fuel_prices.csv\nfallback if DB empty"]
+    DB["DB (SQLite on Render / Postgres in Docker)\nFuelStation table"]
+    EIA["EIA API\nweekly state prices"]
     Cache["In-Memory Cache\nLocMemCache\ngeocodes plus routes"]
     Optimizer["Fuel Optimiser\nGreedy Look-ahead"]
     GeoJSON["GeoJSON Builder\nFeatureCollection\nLineString plus Points"]
@@ -54,9 +54,8 @@ graph TD
     View --> Router
     Router -->|route geometry and distance| Cache
     View --> DB
-    DB -->|no rows| CSV
+    View --> EIA
     DB -->|FuelStation list| Optimizer
-    CSV -->|FuelStation list| Optimizer
     Router --> Optimizer
     Optimizer --> GeoJSON
     GeoJSON --> Response
@@ -78,10 +77,10 @@ graph TD
 | **Primary Routing** | [GraphHopper API](https://graphhopper.com/) | Open-source engine, free tier (500 req/day), returns GeoJSON directly, production-grade |
 | **Fallback Routing** | [OSRM](https://project-osrm.org/) public server | Zero config, no API key, C++ engine — millisecond queries |
 | **Geocoding** | [Nominatim](https://nominatim.openstreetmap.org/) (OpenStreetMap) | 100% free, no key, global coverage |
-| **Database** | PostgreSQL 16 (Docker) / SQLite (local dev) | Auto-detected from `DB_HOST` env var |
+| **Database** | PostgreSQL 16 (Docker local) / SQLite (Render single-container) | Auto-detected from `DB_HOST` and `DATABASE_URL`; falls back to SQLite |
 | **Caching** | Django LocMemCache | Geocodes cached 24h, routes cached 1h — eliminates repeat API hits |
 | **Map data** | GeoJSON `FeatureCollection` | Standard format — drop directly into Leaflet, MapLibre, Deck.gl |
-| **Fuel data** | CSV → PostgreSQL via management command | 150 real stations across all major US interstates |
+| **Fuel data** | `stations.json` + EIA API sync | Real station coordinates + weekly state-level prices |
 | **Containerisation** | Docker Compose | PostgreSQL + Django in one `docker compose up` |
 
 ---
@@ -95,7 +94,8 @@ sequenceDiagram
     participant G as Nominatim
     participant GH as GraphHopper
     participant OS as OSRM fallback
-    participant DB as PostgreSQL
+    participant DB as FuelStation DB
+    participant EIA as EIA API
     participant FO as Fuel Optimiser
     participant GJ as GeoJSON Builder
 
@@ -115,6 +115,7 @@ sequenceDiagram
 
     V->>DB: load all FuelStation rows
     DB-->>V: 150 station records
+    Note over EIA,V: Prices are pre-synced by management command
 
     V->>FO: project stations onto route polyline
     FO-->>V: nearby stations sorted by mile marker
@@ -203,7 +204,7 @@ For a 500-mile route with ~10 station candidates the greedy approach produces re
 
 | Factor | Accuracy | Notes |
 |---|---|---|
-| **Price data** | Static snapshot | CSV prices are fixed at load time — not live GasBuddy/AAA data |
+| **Price data** | Weekly state averages | EIA state-level values are realistic but not per-station live pump prices |
 | **Station coverage** | 150 stations across 48 states | Major Pilot/Love's/TA locations on primary interstates |
 | **Gallon calculation** | Exact given MPG | `gallons = miles / mpg` — no idle or A/C correction |
 | **Cost per stop** | Exact given prices | `cost = gallons × price_per_gallon` |
@@ -240,7 +241,7 @@ django-api-task/
 │   └── wsgi.py
 │
 ├── routing/                     # Core application
-│   ├── models.py                # FuelStation Django model (PostgreSQL)
+│   ├── models.py                # FuelStation Django model
 │   ├── views.py                 # POST /api/route/plan/ endpoint
 │   ├── services.py              # All business logic:
 │   │                            #   geocoding, routing (GH+OSRM),
@@ -253,10 +254,11 @@ django-api-task/
 │
 ├── routing/management/
 │   └── commands/
-│       └── load_fuel_stations.py  # python manage.py load_fuel_stations
+│       ├── load_fuel_stations.py  # python manage.py load_fuel_stations
+│       └── sync_fuel_prices.py    # python manage.py sync_fuel_prices
 │
 ├── data/
-│   └── fuel_prices.csv          # 150 stations: Pilot, Love's, TA across US interstates
+│   └── stations.json            # station coordinates + state codes
 │
 ├── docker-compose.yml           # PostgreSQL 16 + Django web service
 ├── Dockerfile                   # python:3.12-slim image
@@ -298,7 +300,7 @@ python manage.py runserver 0.0.0.0:8000
 
 ---
 
-## Docker (with PostgreSQL)
+## Docker (local PostgreSQL)
 
 ```bash
 # 1. Copy env file
@@ -308,16 +310,17 @@ cp .env.example .env
 # 2. Start everything — Postgres + Django + auto-migrate + auto-load stations
 docker compose up
 
-# Server available at http://localhost:8000
+# Server available at http://localhost:8765
 ```
 
-The `docker-compose.yml` runs this startup sequence automatically:
+The `docker-compose.yml` runs `./start.sh`, which executes:
 
 ```yaml
-command: >
-  sh -c "python manage.py migrate &&
-         python manage.py load_fuel_stations &&
-         python manage.py runserver 0.0.0.0:8000"
+python manage.py migrate
+python manage.py load_fuel_stations
+python manage.py sync_fuel_prices
+python manage.py collectstatic --no-input
+gunicorn fuel_route_planner.wsgi:application --bind 0.0.0.0:${PORT:-8000}
 ```
 
 ### Environment variables
@@ -325,19 +328,20 @@ command: >
 | Variable | Default | Description |
 |---|---|---|
 | `GRAPHHOPPER_API_KEY` | _(blank)_ | Free key from [graphhopper.com](https://graphhopper.com). Blank = OSRM fallback |
-| `DB_HOST` | _(blank)_ | Blank = SQLite. Set to `db` (Docker) or your Postgres host |
+| `DB_HOST` | _(blank)_ | Blank = SQLite. Set to `db` for local Docker PostgreSQL |
 | `DB_NAME` | `fuel_route_planner` | Postgres database name |
 | `DB_USER` | `postgres` | Postgres user |
 | `DB_PASSWORD` | `postgres` | Postgres password |
-| `DB_PORT` | `5432` | Postgres port |
+| `DB_PORT` | `5432` | Postgres port (local Docker only) |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated. Add your server IP here |
 | `DEBUG` | `True` | Set `False` in production |
+| `EIA_API_KEY` | _(blank)_ | Optional. Enables `sync_fuel_prices` weekly updates |
 
 ---
 
 ## Deploy to Render
 
-Render gives you a free managed PostgreSQL + a free web service — no credit card needed for the free tier.
+This project is configured for a single Render web service using SQLite (no external database required).
 
 ### What you need to bring
 
@@ -346,6 +350,7 @@ Render gives you a free managed PostgreSQL + a free web service — no credit ca
 | GitHub repo with this code pushed to it | [github.com](https://github.com) |
 | Render account | [render.com/register](https://render.com/register) |
 | GraphHopper API key | [graphhopper.com/dashboard](https://graphhopper.com/dashboard) → "Get API Key" (free) |
+| EIA API key (optional but recommended) | [eia.gov/opendata/register.php](https://www.eia.gov/opendata/register.php) |
 
 ---
 
@@ -356,12 +361,12 @@ flowchart TD
     A[Push code to GitHub] --> B[Login to render.com]
     B --> C[New then Blueprint]
     C --> D[Connect GitHub repo\nRender reads render.yaml]
-    D --> E[Render creates PostgreSQL DB\nand Web service]
-    E --> F[Go to Web Service Environment tab]
-    F --> G[Set GRAPHHOPPER_API_KEY to your key]
+    D --> E[Render creates Web service]
+    E --> F[Go to Environment tab]
+    F --> G[Set GRAPHHOPPER_API_KEY and EIA_API_KEY]
     G --> H[Deploy latest commit]
-    H --> I[build.sh runs\npip install, migrate\nload_fuel_stations, collectstatic]
-    I --> J[Gunicorn starts\nApp is live]
+    H --> I[build.sh runs\npip install, migrate\nload_fuel_stations]
+    I --> J[start.sh runs\nsync_fuel_prices + gunicorn]
     J --> K[Copy your onrender.com URL\nand hit the API]
 ```
 
@@ -381,19 +386,17 @@ git push -u origin main
 2. Click **New +** in the top-right
 3. Select **Blueprint**
 4. Click **Connect a repository** → authorise GitHub → select your repo
-5. Render reads `render.yaml` automatically and shows you a preview:
-   - **fuel-route-planner** (Web Service)
-   - **fuel-route-planner-db** (PostgreSQL)
-6. Click **Apply** — Render provisions both
+5. Render reads `render.yaml` automatically and shows one service: **fuel-route-planner** (Web Service)
+6. Click **Apply**
 
-#### 3. Set your GraphHopper key
+#### 3. Set your environment keys
 
 After the blueprint deploys:
 
 1. In the Render dashboard → click **fuel-route-planner** (web service)
 2. Go to the **Environment** tab
-3. Find `GRAPHHOPPER_API_KEY` (it shows as blank because `sync: false` in `render.yaml`)
-4. Paste your key: `96ece537-a26d-4e84-a9a4-21053bf0ab69`
+3. Set `GRAPHHOPPER_API_KEY`
+4. Set `EIA_API_KEY` (optional, but enables live weekly state prices)
 5. Click **Save Changes**
 6. Render auto-redeploys — watch the **Logs** tab
 
@@ -421,42 +424,33 @@ services:
     name: fuel-route-planner
     runtime: python
     buildCommand: "./build.sh"       # runs once per deploy
-    startCommand: "gunicorn fuel_route_planner.wsgi:application"
+    startCommand: "./start.sh"
 
     envVars:
       - key: DJANGO_SECRET_KEY
         generateValue: true          # Render generates a secure random value
-      - key: DB_HOST
-        fromDatabase:                # automatically wired to the Postgres service
-          name: fuel-route-planner-db
-          property: host
-      # ... DB_NAME, DB_USER, DB_PASSWORD, DB_PORT same pattern
+      - key: EIA_API_KEY
+        sync: false
 
-databases:
-  - name: fuel-route-planner-db
-    plan: free
 ```
 
 ### What `build.sh` does (runs on every deploy)
 
 ```bash
 pip install -r requirements.txt
-python manage.py collectstatic --no-input   # WhiteNoise serves Django admin assets
+python manage.py collectstatic --no-input   # WhiteNoise serves admin/static files
 python manage.py migrate                    # apply DB migrations
-python manage.py load_fuel_stations         # upsert 150 stations into Postgres
+python manage.py load_fuel_stations         # upsert stations.json rows
 ```
 
 ---
 
-### Render free tier limits
+### Render notes
 
 | Resource | Free limit | Impact |
 |---|---|---|
 | Web service | Spins down after 15 min inactivity | First request after idle takes ~30s (cold start) |
-| PostgreSQL | 1 GB storage, 90-day expiry | DB deleted after 90 days on free plan — upgrade or back up |
-| Bandwidth | 100 GB/month | Plenty for a demo/personal project |
-
-> **PostgreSQL 90-day warning**: Render's free Postgres expires after 90 days. Either upgrade to the paid tier ($7/month) or re-create the DB and re-run `load_fuel_stations`. All fuel data comes from the CSV so nothing is permanently lost.
+| SQLite | Container filesystem | Data is not durable across container rebuild/redeploys (safe for this demo because stations reload each boot) |
 
 ---
 
@@ -471,7 +465,11 @@ python manage.py load_fuel_stations         # upsert 150 stations into Postgres
   "start": "Denver, CO",
   "finish": "Los Angeles, CA",
   "max_range_miles": 500,
-  "mpg": 10
+  "mpg": 10,
+  "vehicle": {
+    "mpg": 9.2,
+    "tank_gallons": 65
+  }
 }
 ```
 
@@ -481,6 +479,10 @@ python manage.py load_fuel_stations         # upsert 150 stations into Postgres
 | `finish` | string | Yes | — | Any US city, address, or landmark |
 | `max_range_miles` | number | No | `500` | Vehicle max range on a full tank |
 | `mpg` | number | No | `10` | Fuel efficiency in miles per gallon |
+| `vehicle` | object | No | — | Optional nested vehicle config |
+| `vehicle.mpg` | number | No | inherits `mpg` | Overrides fuel efficiency |
+| `vehicle.max_range_miles` | number | No | inherits `max_range_miles` | Explicit range override |
+| `vehicle.tank_gallons` | number | No | — | If provided (and `vehicle.max_range_miles` is absent), range is `tank_gallons × mpg` |
 
 #### cURL
 
@@ -531,8 +533,8 @@ curl -X POST http://47.236.14.170:8765/api/route/plan/ \
     {
       "station_id": "start",
       "station_name": "Starting Point",
-      "latitude": 0.0,
-      "longitude": 0.0,
+      "latitude": 39.7392364,
+      "longitude": -104.984862,
       "mile_marker": 0.0,
       "price_per_gallon": 3.28,
       "gallons_purchased": 50.0,
@@ -551,7 +553,7 @@ curl -X POST http://47.236.14.170:8765/api/route/plan/ \
   ],
   "total_fuel_cost": 298.19,
   "warnings": [
-    "Routing powered by GraphHopper free tier (500 req/day). Results may degrade or fall back to OSRM if the daily limit is reached or the API key expires. Fuel prices are a static snapshot — not live data."
+    "Routing powered by GraphHopper free tier (500 req/day). Results may degrade or fall back to OSRM if the daily limit is reached or the API key expires. Fuel prices come from EIA weekly averages when EIA_API_KEY is configured; otherwise placeholders are used."
   ],
   "map_data": {
     "type": "FeatureCollection",
@@ -687,7 +689,7 @@ Caching is intentional: Nominatim's usage policy discourages hammering the free 
 
 ## Fuel Station Coverage
 
-150 stations covering all primary US interstate corridors:
+Stations covering all primary US interstate corridors:
 
 ```
 I-95  (Maine → Florida)          I-90  (Boston → Seattle)

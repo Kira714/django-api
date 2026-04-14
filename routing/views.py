@@ -10,12 +10,14 @@ from routing.services import DEFAULT_MAX_RANGE_MILES, DEFAULT_MPG, build_route_p
 _GRAPHHOPPER_WARNING = (
     "Routing powered by GraphHopper free tier (500 req/day). "
     "Results may degrade or fall back to OSRM if the daily limit is reached "
-    "or the API key expires. Fuel prices are a static snapshot — not live data."
+    "or the API key expires. Fuel prices come from EIA weekly averages when "
+    "EIA_API_KEY is configured; otherwise placeholders are used."
 )
 _OSRM_WARNING = (
     "Routing powered by the public OSRM demo server (no API key). "
     "This server has no uptime SLA and may be slow under heavy load. "
-    "Fuel prices are a static snapshot — not live data."
+    "Fuel prices come from EIA weekly averages when EIA_API_KEY is configured; "
+    "otherwise placeholders are used."
 )
 
 
@@ -34,12 +36,37 @@ def plan_route_view(request):
             {"error": "Both 'start' and 'finish' fields are required."}, status=400
         )
 
+    vehicle_payload = payload.get("vehicle")
+    if vehicle_payload is not None and not isinstance(vehicle_payload, dict):
+        return JsonResponse(
+            {"error": "'vehicle' must be a JSON object when provided."},
+            status=400,
+        )
+
     try:
+        # Backward compatible defaults (existing flat fields).
         max_range_miles = float(payload.get("max_range_miles", DEFAULT_MAX_RANGE_MILES))
         mpg = float(payload.get("mpg", DEFAULT_MPG))
+
+        # New optional nested vehicle config.
+        if vehicle_payload:
+            mpg = float(vehicle_payload.get("mpg", mpg))
+
+            # Prefer explicit range if provided.
+            if "max_range_miles" in vehicle_payload:
+                max_range_miles = float(vehicle_payload["max_range_miles"])
+            elif "tank_gallons" in vehicle_payload:
+                tank_gallons = float(vehicle_payload["tank_gallons"])
+                max_range_miles = tank_gallons * mpg
     except (TypeError, ValueError):
         return JsonResponse(
-            {"error": "'max_range_miles' and 'mpg' must be numeric values."}, status=400
+            {
+                "error": (
+                    "'max_range_miles', 'mpg', and vehicle fields "
+                    "('mpg', 'max_range_miles', 'tank_gallons') must be numeric."
+                )
+            },
+            status=400,
         )
 
     try:

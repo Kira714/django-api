@@ -1,5 +1,15 @@
 version: "3.9"
 
+# ── Local development stack ───────────────────────────────────────────────────
+# Runs Django + PostgreSQL together.
+#
+#   docker compose up          # start everything
+#   docker compose down -v     # stop and wipe the database volume
+#
+# For Render / single-container deploys the Dockerfile is used directly —
+# PostgreSQL is not required there because SQLite is the default when DB_HOST
+# is not set, and fuel stations reload from stations.json on every boot.
+
 services:
   db:
     image: postgres:16-alpine
@@ -16,29 +26,39 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   web:
     build: .
-    command: >
-      sh -c "python manage.py migrate &&
-             python manage.py load_fuel_stations &&
-             python manage.py runserver 0.0.0.0:8000"
-    volumes:
-      - .:/app
+    restart: unless-stopped
+    command: ./start.sh
     ports:
-      - "8000:8000"
+      - "8765:8765"
     environment:
+      PORT: 8765
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-change-me-in-production}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # Wire Django to the db service above
       DB_HOST: db
       DB_NAME: ${DB_NAME:-fuel_route_planner}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_PORT: 5432
       GRAPHHOPPER_API_KEY: ${GRAPHHOPPER_API_KEY:-}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-change-me-in-production}
+      EIA_API_KEY: ${EIA_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/admin/login/', timeout=5)\"",
+        ]
+      interval: 15s
+      timeout: 7s
+      retries: 5
 
 volumes:
   postgres_data:

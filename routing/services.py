@@ -8,10 +8,9 @@ Routing priority
 
 Fuel station data
 -----------------
-Stations are read from the PostgreSQL FuelStation table (populated by
-``python manage.py load_fuel_stations``).  If the table is empty the service
-falls back to reading the CSV directly so the app works before the first
-``migrate`` + ``load_fuel_stations`` run.
+Stations are read from the FuelStation table (populated by
+`python manage.py load_fuel_stations`). Prices are synced from EIA via
+`python manage.py sync_fuel_prices`.
 
 Optimisation algorithm
 ----------------------
@@ -21,11 +20,9 @@ Greedy look-ahead:
   - Otherwise fill the tank as full as needed to cover the next mandatory stop.
 """
 
-import csv
 import logging
 import math
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import requests
@@ -54,28 +51,13 @@ class FuelStationData:
     mile_marker: float = field(default=0.0)
 
 
-# ── CSV / column helpers (used by the management command too) ─────────────────
-
-def _normalize_key(value: str) -> str:
-    return value.strip().lower().replace(" ", "").replace("_", "")
-
-
-def _pick_column(fieldnames: list[str], aliases: tuple[str, ...]) -> str | None:
-    normalized = {_normalize_key(name): name for name in fieldnames if name}
-    for alias in aliases:
-        match = normalized.get(_normalize_key(alias))
-        if match:
-            return match
-    return None
-
-
 # ── Station loaders ───────────────────────────────────────────────────────────
 
 def _load_stations_from_db() -> list[FuelStationData]:
-    """Query FuelStation rows from PostgreSQL."""
+    """Query FuelStation rows from the configured Django database."""
     from routing.models import FuelStation  # local import avoids circular at module load
 
-    return [
+    stations = [
         FuelStationData(
             station_id=str(s.station_id),
             name=s.name,
@@ -85,75 +67,16 @@ def _load_stations_from_db() -> list[FuelStationData]:
         )
         for s in FuelStation.objects.all()
     ]
-
-
-def _load_stations_from_csv(csv_path: Path) -> list[FuelStationData]:
-    """Read FuelStationData rows directly from the CSV (fallback)."""
-    if not csv_path.exists():
-        raise ValueError(
-            f"Fuel price file not found at {csv_path}. "
-            "Run `python manage.py load_fuel_stations` first."
-        )
-
-    with csv_path.open(newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        if not reader.fieldnames:
-            raise ValueError("Fuel CSV has no header row.")
-
-        lat_key = _pick_column(reader.fieldnames, ("latitude", "lat"))
-        lon_key = _pick_column(reader.fieldnames, ("longitude", "lon", "lng", "long"))
-        price_key = _pick_column(
-            reader.fieldnames, ("price_per_gallon", "price", "fuel_price", "cost")
-        )
-        name_key = _pick_column(reader.fieldnames, ("station_name", "name", "station"))
-        id_key = _pick_column(reader.fieldnames, ("id", "station_id"))
-
-        if not lat_key or not lon_key or not price_key:
-            raise ValueError(
-                "Fuel CSV must include latitude, longitude, and price columns."
-            )
-
-        stations: list[FuelStationData] = []
-        for index, row in enumerate(reader):
-            try:
-                stations.append(
-                    FuelStationData(
-                        station_id=(
-                            row.get(id_key, "").strip()
-                            if id_key
-                            else f"station-{index + 1}"
-                        ),
-                        name=(
-                            row.get(name_key, "").strip()
-                            if name_key and row.get(name_key)
-                            else f"Station {index + 1}"
-                        ),
-                        latitude=float(row[lat_key]),
-                        longitude=float(row[lon_key]),
-                        price_per_gallon=float(row[price_key]),
-                    )
-                )
-            except (TypeError, ValueError):
-                continue
-
     if not stations:
-        raise ValueError("Fuel CSV did not contain any valid station rows.")
+        raise ValueError(
+            "FuelStation table is empty. Run `python manage.py load_fuel_stations` first."
+        )
     return stations
 
 
-def load_fuel_stations(csv_path: Path | None = None) -> list[FuelStationData]:
-    """Return station list from DB; fall back to CSV if the table is empty."""
-    try:
-        stations = _load_stations_from_db()
-        if stations:
-            return stations
-        logger.warning("FuelStation table is empty — falling back to CSV.")
-    except Exception as exc:  # DB not yet available (pre-migrate)
-        logger.warning("Could not query FuelStation table (%s) — falling back to CSV.", exc)
-
-    if csv_path is None:
-        csv_path = Path(settings.FUEL_CSV_PATH)
-    return _load_stations_from_csv(csv_path)
+def load_fuel_stations() -> list[FuelStationData]:
+    """Return station list from the FuelStation table."""
+    return _load_stations_from_db()
 
 
 # ── Geo utilities ─────────────────────────────────────────────────────────────
@@ -373,6 +296,8 @@ def _project_stations_onto_route(
 def _optimize_fuel_plan(
     route_distance_miles: float,
     stations: list[FuelStationData],
+    start_coords: tuple[float, float],
+    finish_coords: tuple[float, float],
     max_range_miles: float,
     mpg: float,
 ) -> tuple[list[dict[str, Any]], float]:
@@ -397,16 +322,16 @@ def _optimize_fuel_plan(
     start = FuelStationData(
         station_id="start",
         name="Starting Point",
-        latitude=0.0,
-        longitude=0.0,
+        latitude=start_coords[0],
+        longitude=start_coords[1],
         price_per_gallon=default_price,
         mile_marker=0.0,
     )
     destination = FuelStationData(
         station_id="destination",
         name="Destination",
-        latitude=0.0,
-        longitude=0.0,
+        latitude=finish_coords[0],
+        longitude=finish_coords[1],
         price_per_gallon=float("inf"),
         mile_marker=route_distance_miles,
     )
@@ -564,7 +489,6 @@ def _build_geojson(
 def build_route_plan(
     start_location: str,
     finish_location: str,
-    fuel_csv_path: Path | None = None,
     max_range_miles: float = DEFAULT_MAX_RANGE_MILES,
     mpg: float = DEFAULT_MPG,
 ) -> dict[str, Any]:
@@ -584,11 +508,13 @@ def build_route_plan(
     route = get_route(start_coords, finish_coords)
 
     route_distance_miles = route["distance_meters"] * MILES_PER_METER
-    stations = load_fuel_stations(fuel_csv_path)
+    stations = load_fuel_stations()
     nearby = _project_stations_onto_route(route["geometry"], stations)
     stop_plan, total_cost = _optimize_fuel_plan(
         route_distance_miles=route_distance_miles,
         stations=nearby,
+        start_coords=start_coords,
+        finish_coords=finish_coords,
         max_range_miles=max_range_miles,
         mpg=mpg,
     )
