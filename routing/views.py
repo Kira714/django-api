@@ -2,6 +2,7 @@ import json
 
 from django.conf import settings
 from django.http import JsonResponse
+from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -19,6 +20,10 @@ _OSRM_WARNING = (
     "Fuel prices come from EIA weekly averages when EIA_API_KEY is configured; "
     "otherwise placeholders are used."
 )
+
+
+def route_planner_ui(request):
+    return render(request, "routing/index.html")
 
 
 @csrf_exempt

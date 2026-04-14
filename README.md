@@ -1,17 +1,19 @@
 # Fuel Route Planner API
 
-A Django REST API that plans cost-optimised fuel stops for any US road trip. Give it a start and finish city — it returns a fully routable map, ranked fuel stops, per-stop cost breakdown, and total trip fuel spend.
+A production-style Django API for planning US road trips with fuel-cost optimization.
 
-> **⚠️ API Limitations — Read Before Using**
->
-> | Dependency | Free Tier Limit | What breaks when it expires |
-> |---|---|---|
-> | **GraphHopper** | 500 req/day | Routing falls back to OSRM automatically — no crash, but slower |
-> | **OSRM public server** | No SLA, shared | Routing may time out; self-host OSRM for production |
-> | **Nominatim (geocoding)** | Fair use only | Geocoding fails for high-volume usage |
-> | **Fuel prices (EIA API)** | Weekly state averages | State-level (not station-level), can lag local pump prices |
->
-> Every API response includes a `warnings` field that tells you which engine served the request and reminds you of these constraints.
+Give it a `start` and `finish` location and it returns:
+- turn-by-turn route geometry (GeoJSON-ready),
+- optimized fuel stop strategy,
+- per-stop gallons/cost breakdown,
+- total estimated trip fuel spend,
+- engine/source warnings so clients can reason about data quality.
+
+It also serves a built-in frontend UI at `/` where you can manually enter trip and vehicle values, hit the API, and visualize the route/stops on a map.
+
+It is designed to run in two practical modes:
+- **Local development**: Docker Compose + PostgreSQL.
+- **Cloud deploy (Render single container)**: SQLite + automatic station reload/sync on boot.
 
 ---
 
@@ -30,6 +32,7 @@ A Django REST API that plans cost-optimised fuel stops for any US road trip. Giv
 - [API Reference](#api-reference)
 - [Full Response Example](#full-response-example)
 - [Running Tests](#running-tests)
+- [API Limitations & Trade-offs](#api-limitations--trade-offs)
 
 ---
 
@@ -67,6 +70,16 @@ graph TD
     style Cache fill:#f0a500,color:#fff
     style Optimizer fill:#27ae60,color:#fff
 ```
+
+---
+
+## Why This Project
+
+- Solves a real planning problem: fuel spend can vary dramatically by stop choice.
+- Uses resilient routing: GraphHopper primary with automatic OSRM fallback.
+- Keeps deployment simple: one-service Render deploy works without external DB.
+- Produces frontend-ready map output: route + stops in a single GeoJSON payload.
+- Supports customizable vehicle configs without forcing extra fields.
 
 ---
 
@@ -493,6 +506,14 @@ python manage.py load_fuel_stations         # upsert stations.json rows
 | `vehicle.max_range_miles` | number | No | inherits `max_range_miles` | Explicit range override |
 | `vehicle.tank_gallons` | number | No | — | If provided (and `vehicle.max_range_miles` is absent), range is `tank_gallons × mpg` |
 
+### Vehicle precedence rules
+
+1. Defaults: `max_range_miles=500`, `mpg=10`.
+2. Top-level `max_range_miles` / `mpg` override defaults.
+3. `vehicle.mpg` overrides top-level `mpg`.
+4. `vehicle.max_range_miles` has priority for range.
+5. If `vehicle.max_range_miles` is absent and `vehicle.tank_gallons` is present, range is computed as `tank_gallons * mpg`.
+
 #### cURL
 
 ```bash
@@ -669,6 +690,10 @@ Live endpoint:
 
 `https://fuel-route-planner.onrender.com/api/route/plan/`
 
+Live frontend UI:
+
+`https://fuel-route-planner.onrender.com/`
+
 Quick test request:
 
 ```bash
@@ -763,3 +788,16 @@ I-25  (Albuquerque → Denver)     I-5   (San Diego → Seattle)
 ```
 
 Brands covered: **Pilot Flying J**, **Love's Travel Stops**, **TravelCenters of America (TA)**
+
+---
+
+## API Limitations & Trade-offs
+
+| Dependency | Free Tier Limit | Impact |
+|---|---|---|
+| **GraphHopper** | 500 req/day | Falls back to OSRM; may be slower/less stable under heavy load |
+| **OSRM public server** | Shared infra, no SLA | Possible latency spikes/timeouts |
+| **Nominatim geocoding** | Fair-use policy | Not suitable for high-volume geocode traffic |
+| **EIA pricing feed** | Weekly state averages | Not station-level realtime pump prices |
+
+Every response includes `warnings[]` indicating routing engine behavior and price-source caveats so clients can surface operational context.

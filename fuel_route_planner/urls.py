@@ -17,7 +17,10 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from routing.views import route_planner_ui
+
 urlpatterns = [
+    path("", route_planner_ui, name="route-planner-ui"),
     path('admin/', admin.site.urls),
     path("api/route/", include("routing.urls")),
 ]

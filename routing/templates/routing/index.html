@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fuel Route Planner</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      margin-top: 0;
+    }
+    .card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+      color: #93c5fd;
+    }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0b1220;
+      color: #e2e8f0;
+    }
+    button {
+      margin-top: 12px;
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 8px;
+      background: #2563eb;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    #map {
+      height: 520px;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .meta {
+      font-size: 14px;
+      color: #cbd5e1;
+      margin: 6px 0;
+    }
+    .error {
+      color: #fca5a5;
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .stop-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+    code {
+      background: #0b1220;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Fuel Route Planner</h1>
+    <p class="meta">API Endpoint: <code id="apiEndpoint"></code></p>
+
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label for="start">Start location</label>
+          <input id="start" value="Denver, CO" />
+        </div>
+        <div>
+          <label for="finish">Finish location</label>
+          <input id="finish" value="Phoenix, AZ" />
+        </div>
+        <div>
+          <label for="maxRange">Max range miles (optional)</label>
+          <input id="maxRange" type="number" step="0.1" placeholder="500" />
+        </div>
+        <div>
+          <label for="mpg">MPG (optional)</label>
+          <input id="mpg" type="number" step="0.1" placeholder="10" />
+        </div>
+        <div>
+          <label for="vehicleMpg">Vehicle MPG (optional override)</label>
+          <input id="vehicleMpg" type="number" step="0.1" placeholder="9.2" />
+        </div>
+        <div>
+          <label for="tankGallons">Tank gallons (optional)</label>
+          <input id="tankGallons" type="number" step="0.1" placeholder="60" />
+        </div>
+      </div>
+      <button id="hitBtn">Hit API</button>
+      <p id="status" class="meta"></p>
+      <p id="error" class="error"></p>
+    </div>
+
+    <div class="card">
+      <h3>Trip Summary</h3>
+      <p id="summary" class="meta">No request yet.</p>
+      <ol id="stops" class="stop-list"></ol>
+    </div>
+
+    <div class="card">
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script>
+    const apiEndpoint = `${window.location.origin}/api/route/plan/`;
+    document.getElementById("apiEndpoint").textContent = apiEndpoint;
+
+    const map = L.map("map").setView([39.5, -98.35], 4);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    const layers = L.layerGroup().addTo(map);
+
+    function parseOptionalNumber(value) {
+      if (!value || String(value).trim() === "") return null;
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    }
+
+    function buildPayload() {
+      const payload = {
+        start: document.getElementById("start").value.trim(),
+        finish: document.getElementById("finish").value.trim(),
+      };
+
+      const maxRange = parseOptionalNumber(document.getElementById("maxRange").value);
+      const mpg = parseOptionalNumber(document.getElementById("mpg").value);
+      const vehicleMpg = parseOptionalNumber(document.getElementById("vehicleMpg").value);
+      const tankGallons = parseOptionalNumber(document.getElementById("tankGallons").value);
+
+      if (maxRange !== null) payload.max_range_miles = maxRange;
+      if (mpg !== null) payload.mpg = mpg;
+
+      const vehicle = {};
+      if (vehicleMpg !== null) vehicle.mpg = vehicleMpg;
+      if (tankGallons !== null) vehicle.tank_gallons = tankGallons;
+      if (Object.keys(vehicle).length > 0) payload.vehicle = vehicle;
+
+      return payload;
+    }
+
+    function renderStops(stops) {
+      const list = document.getElementById("stops");
+      list.innerHTML = "";
+      stops.forEach((stop, idx) => {
+        const li = document.createElement("li");
+        li.textContent =
+          `Fuel ${idx + 1}: ${stop.station_name} | ${stop.mile_marker} mi | ` +
+          `${stop.gallons_purchased} gal | $${stop.cost}`;
+        list.appendChild(li);
+      });
+    }
+
+    function renderMap(data) {
+      layers.clearLayers();
+      const geojsonLayer = L.geoJSON(data.map_data, {
+        style: (feature) => {
+          if (feature.properties.type === "route") {
+            return { color: "#22c55e", weight: 5 };
+          }
+          return {};
+        },
+        pointToLayer: (feature, latlng) => {
+          let label = feature.properties.label || feature.properties.type;
+          if (feature.properties.type === "fuel_stop") {
+            const idx = data.fuel_stops.findIndex(
+              (s) => s.station_id === feature.properties.station_id
+            );
+            if (idx >= 0) {
+              label = `Fuel ${idx + 1} - ${label}`;
+            }
+          }
+          return L.marker(latlng).bindPopup(label);
+        },
+      });
+      geojsonLayer.addTo(layers);
+      map.fitBounds(geojsonLayer.getBounds(), { padding: [30, 30] });
+    }
+
+    async function hitApi() {
+      const btn = document.getElementById("hitBtn");
+      const status = document.getElementById("status");
+      const error = document.getElementById("error");
+      const summary = document.getElementById("summary");
+
+      error.textContent = "";
+      btn.disabled = true;
+      status.textContent = "Calling API...";
+
+      try {
+        const payload = buildPayload();
+        const res = await fetch(apiEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(JSON.stringify(data, null, 2));
+        }
+
+        summary.textContent =
+          `Engine: ${data.route.engine} | Distance: ${data.route.distance_miles} mi | ` +
+          `Duration: ${data.route.duration_minutes} min | Total fuel: $${data.total_fuel_cost}`;
+
+        renderStops(data.fuel_stops || []);
+        renderMap(data);
+        status.textContent = "Success.";
+      } catch (err) {
+        status.textContent = "Failed.";
+        error.textContent = err.message || String(err);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById("hitBtn").addEventListener("click", hitApi);
+  </script>
+</body>
+</html>
