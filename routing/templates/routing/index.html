@@ -103,6 +103,15 @@
     .btn-secondary {
       background: #334155;
     }
+    .btn-eia {
+      background: #ea580c;
+      margin-left: auto;
+    }
+    .btn-copy {
+      background: #2563eb;
+      margin-top: 0;
+      margin-left: auto;
+    }
     .btn-row {
       display: flex;
       flex-wrap: wrap;
@@ -207,7 +216,7 @@
       </div>
       <div class="btn-row">
         <button id="hitBtnCsv">Hit API (CSV Prices)</button>
-        <button id="hitBtnEia" class="btn-secondary">Hit API (EIA Live)</button>
+        <button id="hitBtnEia" class="btn-eia">Hit API (EIA Live)</button>
       </div>
       <p id="status" class="meta"></p>
       <p id="error" class="error"></p>
@@ -216,17 +225,16 @@
     <div class="card">
       <h3>API Inspector</h3>
       <p class="meta">Swagger-style request/response view for the latest call.</p>
-      <div class="btn-row" style="margin-top: 0;">
-        <button id="importCurlBtn" class="btn-secondary">Import cURL (Prefilled)</button>
-        <button id="copyResponseBtn" class="btn-secondary">Copy Response</button>
-      </div>
       <div class="swagger-grid">
         <div>
           <p class="raw-block-title">Request</p>
           <pre id="rawRequest" class="raw-output">No request yet.</pre>
         </div>
         <div>
-          <p class="raw-block-title">Response</p>
+          <div class="btn-row" style="margin-top: 0; margin-bottom: 8px;">
+            <p class="raw-block-title" style="margin: 0;">Response</p>
+            <button id="copyResponseBtn" class="btn-copy">Copy Response</button>
+          </div>
           <pre id="rawResponse" class="raw-output">No response yet.</pre>
         </div>
       </div>
@@ -258,6 +266,7 @@
     const apiEndpointCsv = `${window.location.origin}/api/route/plan/`;
     const apiEndpointEia = `${window.location.origin}/api/route/plan/eia/`;
     let activeEndpoint = apiEndpointCsv;
+    let activeMode = "csv";
     document.getElementById("apiEndpointCsv").textContent = apiEndpointCsv;
     document.getElementById("apiEndpointEia").textContent = apiEndpointEia;
 
@@ -362,10 +371,13 @@
 
     function renderMap(data) {
       layers.clearLayers();
+      const routeColor = activeMode === "eia" ? "#f97316" : "#22c55e";
+      const fuelColor = activeMode === "eia" ? "#f97316" : "#ef4444";
+      const fuelBorder = activeMode === "eia" ? "#c2410c" : "#dc2626";
       const geojsonLayer = L.geoJSON(data.map_data, {
         style: (feature) => {
           if (feature.properties.type === "route") {
-            return { color: "#22c55e", weight: 5 };
+            return { color: routeColor, weight: 5 };
           }
           return {};
         },
@@ -380,8 +392,8 @@
             }
             return L.circleMarker(latlng, {
               radius: 8,
-              color: "#dc2626",
-              fillColor: "#ef4444",
+              color: fuelBorder,
+              fillColor: fuelColor,
               fillOpacity: 0.95,
               weight: 2,
             }).bindPopup(label);
@@ -424,6 +436,7 @@
       const rawResponse = document.getElementById("rawResponse");
 
       activeEndpoint = endpointMode === "eia" ? apiEndpointEia : apiEndpointCsv;
+      activeMode = endpointMode;
       error.textContent = "";
       btnCsv.disabled = true;
       btnEia.disabled = true;
@@ -469,7 +482,7 @@
         }
 
         summary.textContent =
-          `Engine: ${data.route.engine} | Distance: ${data.route.distance_miles} mi | ` +
+          `Mode: ${endpointMode.toUpperCase()} | Engine: ${data.route.engine} | Distance: ${data.route.distance_miles} mi | ` +
           `Duration: ${data.route.duration_minutes} min | Total fuel: $${data.total_fuel_cost}`;
 
         renderStops(data.fuel_stops || []);
@@ -492,20 +505,6 @@
       }
     }
 
-    function currentPayloadForCurl() {
-      return buildPayload();
-    }
-
-    function buildCurlSnippet() {
-      const payload = currentPayloadForCurl();
-      const escapedBody = JSON.stringify(payload).replace(/'/g, "'\"'\"'");
-      return (
-        `curl -X POST "${activeEndpoint}" ` +
-        `-H "Content-Type: application/json" ` +
-        `-d '${escapedBody}'`
-      );
-    }
-
     async function copyTextToClipboard(text, successMessage) {
       const status = document.getElementById("status");
       try {
@@ -524,13 +523,6 @@
         status.textContent = "Copy failed.";
       }
     }
-
-    document.getElementById("importCurlBtn").addEventListener("click", () => {
-      const curl = buildCurlSnippet();
-      const rawRequest = document.getElementById("rawRequest");
-      rawRequest.textContent = curl;
-      copyTextToClipboard(curl, "cURL copied. Paste in Postman import.");
-    });
 
     document.getElementById("copyResponseBtn").addEventListener("click", () => {
       const rawResponse = document.getElementById("rawResponse").textContent;
