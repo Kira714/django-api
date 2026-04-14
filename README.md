@@ -26,6 +26,7 @@ A Django REST API that plans cost-optimised fuel stops for any US road trip. Giv
 - [Setup & Run](#setup--run)
 - [Docker (local PostgreSQL)](#docker-local-postgresql)
 - [Deploy to Render](#deploy-to-render)
+- [Test Live API (Render)](#test-live-api-render)
 - [API Reference](#api-reference)
 - [Full Response Example](#full-response-example)
 - [Running Tests](#running-tests)
@@ -458,6 +459,14 @@ python manage.py load_fuel_stations         # upsert stations.json rows
 
 ### `POST /api/route/plan/`
 
+### What this API can do
+
+- Plans a drivable route between two US locations.
+- Chooses fuel stops using price-aware greedy optimization.
+- Returns total route distance, duration, and estimated fuel cost.
+- Returns GeoJSON for rendering route line + stop pins on maps.
+- Adapts fuel strategy when you pass optional custom vehicle inputs.
+
 #### Request body
 
 ```json
@@ -487,7 +496,7 @@ python manage.py load_fuel_stations         # upsert stations.json rows
 #### cURL
 
 ```bash
-curl -X POST http://47.236.14.170:8765/api/route/plan/ \
+curl -X POST https://fuel-route-planner.onrender.com/api/route/plan/ \
   -H "Content-Type: application/json" \
   -d '{
     "start": "Denver, CO",
@@ -495,6 +504,41 @@ curl -X POST http://47.236.14.170:8765/api/route/plan/ \
     "max_range_miles": 500,
     "mpg": 10
   }'
+```
+
+#### Vehicle input examples
+
+Use default vehicle config (optional fields omitted):
+
+```json
+{
+  "start": "Denver, CO",
+  "finish": "Phoenix, AZ"
+}
+```
+
+Override via top-level fields:
+
+```json
+{
+  "start": "Denver, CO",
+  "finish": "Phoenix, AZ",
+  "max_range_miles": 600,
+  "mpg": 8.5
+}
+```
+
+Override via nested vehicle object:
+
+```json
+{
+  "start": "Denver, CO",
+  "finish": "Phoenix, AZ",
+  "vehicle": {
+    "mpg": 7.5,
+    "tank_gallons": 60
+  }
+}
 ```
 
 #### Error responses
@@ -616,6 +660,26 @@ curl -X POST http://47.236.14.170:8765/api/route/plan/ \
 | `map_data.features[2]` | `Point` — finish pin |
 | `map_data.features[3..]` | `Point` per fuel stop with full metadata |
 | `warnings[]` | Runtime warnings — which engine was used, expiry/SLA notices, static price disclaimer |
+
+---
+
+## Test Live API (Render)
+
+Live endpoint:
+
+`https://fuel-route-planner.onrender.com/api/route/plan/`
+
+Quick test request:
+
+```bash
+curl -X POST https://fuel-route-planner.onrender.com/api/route/plan/ \
+  -H "Content-Type: application/json" \
+  -d '{"start":"Austin, TX","finish":"Dallas, TX"}'
+```
+
+Example successful response in Postman:
+
+![Live API test response](./screenshot.png)
 
 ### Rendering the map (Leaflet example)
 
