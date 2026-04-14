@@ -157,8 +157,12 @@
     document.getElementById("apiEndpoint").textContent = apiEndpoint;
 
     const map = L.map("map").setView([39.5, -98.35], 4);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors",
+    // Use Carto light tiles to avoid OSM volunteer tile-host referer blocking.
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      attribution:
+        "&copy; OpenStreetMap contributors &copy; CARTO",
+      subdomains: "abcd",
+      maxZoom: 20,
     }).addTo(map);
 
     const layers = L.layerGroup().addTo(map);
@@ -221,7 +225,35 @@
             if (idx >= 0) {
               label = `Fuel ${idx + 1} - ${label}`;
             }
+            return L.circleMarker(latlng, {
+              radius: 8,
+              color: "#dc2626",
+              fillColor: "#ef4444",
+              fillOpacity: 0.95,
+              weight: 2,
+            }).bindPopup(label);
           }
+
+          if (feature.properties.type === "start") {
+            return L.circleMarker(latlng, {
+              radius: 8,
+              color: "#065f46",
+              fillColor: "#10b981",
+              fillOpacity: 0.95,
+              weight: 2,
+            }).bindPopup(label);
+          }
+
+          if (feature.properties.type === "finish") {
+            return L.circleMarker(latlng, {
+              radius: 8,
+              color: "#1e3a8a",
+              fillColor: "#3b82f6",
+              fillOpacity: 0.95,
+              weight: 2,
+            }).bindPopup(label);
+          }
+
           return L.marker(latlng).bindPopup(label);
         },
       });

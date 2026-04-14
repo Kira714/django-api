@@ -13,6 +13,14 @@ services:
       - key: DEBUG
         value: "False"
 
+      # Force SQLite mode on Render single-service deploys.
+      # This prevents stale dashboard values from older Postgres setups
+      # from being used accidentally.
+      - key: DATABASE_URL
+        value: ""
+      - key: DB_HOST
+        value: ""
+
       - key: GRAPHHOPPER_API_KEY
         sync: false                  # You paste this manually in the Render dashboard
 
