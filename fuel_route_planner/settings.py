@@ -114,14 +114,15 @@ else:
 GRAPHHOPPER_API_KEY = os.environ.get("GRAPHHOPPER_API_KEY", "")
 
 # ── Fuel data ─────────────────────────────────────────────────────────────────
-# Real station coordinates (no prices — prices come from EIA API).
+# Real station coordinates (no prices in JSON).
 FUEL_STATIONS_JSON_PATH = os.environ.get(
     "FUEL_STATIONS_JSON_PATH", str(BASE_DIR / "data" / "stations.json")
 )
 
-# EIA Open Data API key — free sign-up at https://www.eia.gov/opendata/register.php
-# Used by `python manage.py sync_fuel_prices` to fetch weekly state-level gas prices.
-EIA_API_KEY = os.environ.get("EIA_API_KEY", "")
+# CSV source for fuel prices used by `python manage.py sync_fuel_prices`.
+FUEL_PRICES_CSV_PATH = os.environ.get(
+    "FUEL_PRICES_CSV_PATH", str(BASE_DIR / "fuel-prices-for-be-assessment.csv")
+)
 
 # ── Cache ─────────────────────────────────────────────────────────────────────
 CACHES = {

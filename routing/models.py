@@ -2,7 +2,7 @@ from django.db import models
 
 
 class FuelStation(models.Model):
-    """A fueling station loaded from stations.json; prices synced from EIA API."""
+    """A fueling station loaded from stations.json; prices synced from CSV."""
 
     station_id = models.CharField(max_length=100, unique=True)
     name = models.CharField(max_length=255)

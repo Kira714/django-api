@@ -24,8 +24,8 @@ services:
       - key: GRAPHHOPPER_API_KEY
         sync: false                  # You paste this manually in the Render dashboard
 
-      - key: EIA_API_KEY
-        sync: false                  # Optional: enables live weekly state average prices
+      - key: FUEL_PRICES_CSV_PATH
+        value: "fuel-prices-for-be-assessment.csv"
 
       # RENDER_EXTERNAL_HOSTNAME is injected automatically by Render.
       # settings.py reads it and appends it to ALLOWED_HOSTS — no manual action needed.

@@ -12,14 +12,13 @@ from routing.services import DEFAULT_MAX_RANGE_MILES, DEFAULT_MPG, build_route_p
 _GRAPHHOPPER_WARNING = (
     "Routing powered by GraphHopper free tier (500 req/day). "
     "Results may degrade or fall back to OSRM if the daily limit is reached "
-    "or the API key expires. Fuel prices come from EIA weekly averages when "
-    "EIA_API_KEY is configured; otherwise placeholders are used."
+    "or the API key expires. Fuel prices are synced from the provided CSV "
+    "dataset by state averages."
 )
 _OSRM_WARNING = (
     "Routing powered by the public OSRM demo server (no API key). "
     "This server has no uptime SLA and may be slow under heavy load. "
-    "Fuel prices come from EIA weekly averages when EIA_API_KEY is configured; "
-    "otherwise placeholders are used."
+    "Fuel prices are synced from the provided CSV dataset by state averages."
 )
 
 

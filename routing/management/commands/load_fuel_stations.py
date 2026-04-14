@@ -3,7 +3,7 @@ Management command: load_fuel_stations
 
 Reads stations.json (real coordinates + state codes, no prices) and upserts
 every entry into the FuelStation table with a placeholder price of $3.50/gal.
-Run sync_fuel_prices afterwards to replace placeholders with live EIA prices.
+Run sync_fuel_prices afterwards to replace placeholders with CSV-derived prices.
 
 Safe to run multiple times — existing stations are updated, not duplicated.
 
@@ -91,6 +91,6 @@ class Command(BaseCommand):
                 f"Loaded {total} stations from {json_path.name} "
                 f"({created_count} new at ${DEFAULT_PLACEHOLDER_PRICE:.2f}/gal placeholder, "
                 f"{updated_count} updated, {skipped_count} skipped). "
-                "Run sync_fuel_prices to fetch live EIA prices."
+                "Run sync_fuel_prices to apply CSV-derived prices."
             )
         )

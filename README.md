@@ -45,7 +45,7 @@ graph TD
     Geocoder["Geocoder\nNominatim OSM"]
     Router["Routing Engine\nGraphHopper primary\nOSRM fallback"]
     DB["DB (SQLite on Render / Postgres in Docker)\nFuelStation table"]
-    EIA["EIA API\nweekly state prices"]
+    CSV["Fuel prices CSV\nstate average sync"]
     Cache["In-Memory Cache\nLocMemCache\ngeocodes plus routes"]
     Optimizer["Fuel Optimiser\nGreedy Look-ahead"]
     GeoJSON["GeoJSON Builder\nFeatureCollection\nLineString plus Points"]
@@ -58,7 +58,7 @@ graph TD
     View --> Router
     Router -->|route geometry and distance| Cache
     View --> DB
-    View --> EIA
+    View --> CSV
     DB -->|FuelStation list| Optimizer
     Router --> Optimizer
     Optimizer --> GeoJSON
@@ -94,7 +94,7 @@ graph TD
 | **Database** | PostgreSQL 16 (Docker local) / SQLite (Render single-container) | Auto-detected from `DB_HOST` and `DATABASE_URL`; falls back to SQLite |
 | **Caching** | Django LocMemCache | Geocodes cached 24h, routes cached 1h — eliminates repeat API hits |
 | **Map data** | GeoJSON `FeatureCollection` | Standard format — drop directly into Leaflet, MapLibre, Deck.gl |
-| **Fuel data** | `stations.json` + EIA API sync | Real station coordinates + weekly state-level prices |
+| **Fuel data** | `stations.json` + assessment CSV sync | Real station coordinates + CSV-based state average prices |
 | **Containerisation** | Docker Compose | PostgreSQL + Django in one `docker compose up` |
 
 ---
@@ -109,7 +109,7 @@ sequenceDiagram
     participant GH as GraphHopper
     participant OS as OSRM fallback
     participant DB as FuelStation DB
-    participant EIA as EIA API
+    participant CSV as Fuel price CSV
     participant FO as Fuel Optimiser
     participant GJ as GeoJSON Builder
 
@@ -129,7 +129,7 @@ sequenceDiagram
 
     V->>DB: load all FuelStation rows
     DB-->>V: 150 station records
-    Note over EIA,V: Prices are pre-synced by management command
+    Note over CSV,V: Prices are pre-synced by management command
 
     V->>FO: project stations onto route polyline
     FO-->>V: nearby stations sorted by mile marker
@@ -218,7 +218,7 @@ For a 500-mile route with ~10 station candidates the greedy approach produces re
 
 | Factor | Accuracy | Notes |
 |---|---|---|
-| **Price data** | Weekly state averages | EIA state-level values are realistic but not per-station live pump prices |
+| **Price data** | CSV state averages | Based on assessment CSV; not station-level realtime pump prices |
 | **Station coverage** | 150 stations across 48 states | Major Pilot/Love's/TA locations on primary interstates |
 | **Gallon calculation** | Exact given MPG | `gallons = miles / mpg` — no idle or A/C correction |
 | **Cost per stop** | Exact given prices | `cost = gallons × price_per_gallon` |
@@ -349,7 +349,7 @@ gunicorn fuel_route_planner.wsgi:application --bind 0.0.0.0:${PORT:-8000}
 | `DB_PORT` | `5432` | Postgres port (local Docker only) |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated. Add your server IP here |
 | `DEBUG` | `True` | Set `False` in production |
-| `EIA_API_KEY` | _(blank)_ | Optional. Enables `sync_fuel_prices` weekly updates |
+| `FUEL_PRICES_CSV_PATH` | `fuel-prices-for-be-assessment.csv` | Optional path override for CSV price sync source |
 
 ---
 
@@ -364,7 +364,7 @@ This project is configured for a single Render web service using SQLite (no exte
 | GitHub repo with this code pushed to it | [github.com](https://github.com) |
 | Render account | [render.com/register](https://render.com/register) |
 | GraphHopper API key | [graphhopper.com/dashboard](https://graphhopper.com/dashboard) → "Get API Key" (free) |
-| EIA API key (optional but recommended) | [eia.gov/opendata/register.php](https://www.eia.gov/opendata/register.php) |
+| Fuel prices CSV file | `fuel-prices-for-be-assessment.csv` in repo root |
 
 ---
 
@@ -377,7 +377,7 @@ flowchart TD
     C --> D[Connect GitHub repo\nRender reads render.yaml]
     D --> E[Render creates Web service]
     E --> F[Go to Environment tab]
-    F --> G[Set GRAPHHOPPER_API_KEY and EIA_API_KEY]
+    F --> G[Set GRAPHHOPPER_API_KEY]
     G --> H[Deploy latest commit]
     H --> I[build.sh runs\npip install, migrate\nload_fuel_stations]
     I --> J[start.sh runs\nsync_fuel_prices + gunicorn]
@@ -410,7 +410,7 @@ After the blueprint deploys:
 1. In the Render dashboard → click **fuel-route-planner** (web service)
 2. Go to the **Environment** tab
 3. Set `GRAPHHOPPER_API_KEY`
-4. Set `EIA_API_KEY` (optional, but enables live weekly state prices)
+4. Optional: set `FUEL_PRICES_CSV_PATH` if using a custom CSV location
 5. Click **Save Changes**
 6. Render auto-redeploys — watch the **Logs** tab
 
@@ -443,8 +443,8 @@ services:
     envVars:
       - key: DJANGO_SECRET_KEY
         generateValue: true          # Render generates a secure random value
-      - key: EIA_API_KEY
-        sync: false
+      - key: FUEL_PRICES_CSV_PATH
+        value: "fuel-prices-for-be-assessment.csv"
 
 ```
 
@@ -618,7 +618,7 @@ Override via nested vehicle object:
   ],
   "total_fuel_cost": 298.19,
   "warnings": [
-    "Routing powered by GraphHopper free tier (500 req/day). Results may degrade or fall back to OSRM if the daily limit is reached or the API key expires. Fuel prices come from EIA weekly averages when EIA_API_KEY is configured; otherwise placeholders are used."
+    "Routing powered by GraphHopper free tier (500 req/day). Results may degrade or fall back to OSRM if the daily limit is reached or the API key expires. Fuel prices are synced from the provided CSV dataset by state averages."
   ],
   "map_data": {
     "type": "FeatureCollection",
@@ -798,6 +798,6 @@ Brands covered: **Pilot Flying J**, **Love's Travel Stops**, **TravelCenters of 
 | **GraphHopper** | 500 req/day | Falls back to OSRM; may be slower/less stable under heavy load |
 | **OSRM public server** | Shared infra, no SLA | Possible latency spikes/timeouts |
 | **Nominatim geocoding** | Fair-use policy | Not suitable for high-volume geocode traffic |
-| **EIA pricing feed** | Weekly state averages | Not station-level realtime pump prices |
+| **CSV price feed** | Snapshot-based | Depends on file freshness; not station-level realtime pump prices |
 
 Every response includes `warnings[]` indicating routing engine behavior and price-source caveats so clients can surface operational context.
