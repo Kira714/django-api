@@ -243,6 +243,7 @@
     <div class="card">
       <h3>Trip Summary</h3>
       <p id="summary" class="meta">No request yet.</p>
+      <p id="summaryBenchmark" class="meta"></p>
       <ol id="stops" class="stop-list"></ol>
     </div>
 
@@ -432,6 +433,7 @@
       const status = document.getElementById("status");
       const error = document.getElementById("error");
       const summary = document.getElementById("summary");
+      const summaryBenchmark = document.getElementById("summaryBenchmark");
       const rawRequest = document.getElementById("rawRequest");
       const rawResponse = document.getElementById("rawResponse");
 
@@ -484,6 +486,12 @@
         summary.textContent =
           `Mode: ${endpointMode.toUpperCase()} | Engine: ${data.route.engine} | Distance: ${data.route.distance_miles} mi | ` +
           `Duration: ${data.route.duration_minutes} min | Total fuel: $${data.total_fuel_cost}`;
+        if (typeof data.total_fuel_cost_at_10_mpg !== "undefined") {
+          summaryBenchmark.textContent =
+            `Estimated fuel cost at fixed 10 MPG: $${data.total_fuel_cost_at_10_mpg}`;
+        } else {
+          summaryBenchmark.textContent = "";
+        }
 
         renderStops(data.fuel_stops || []);
         renderMap(data);
@@ -491,6 +499,7 @@
       } catch (err) {
         status.textContent = "Failed.";
         error.textContent = err.message || String(err);
+        summaryBenchmark.textContent = "";
         rawResponse.textContent = JSON.stringify(
           {
             status: "request_failed",
