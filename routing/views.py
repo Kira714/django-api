@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -23,7 +24,32 @@ _OSRM_WARNING = (
 
 
 def route_planner_ui(request):
-    return render(request, "routing/index.html")
+    suggestions: list[str] = []
+    json_path = Path(getattr(settings, "FUEL_STATIONS_JSON_PATH", ""))
+    if json_path.exists():
+        try:
+            with json_path.open(encoding="utf-8") as fh:
+                rows = json.load(fh)
+            if isinstance(rows, list):
+                # Use "City ST" extracted from station names like:
+                # "Pilot - Kennebunk ME" -> "Kennebunk ME"
+                unique = set()
+                for row in rows:
+                    name = str(row.get("name", "")).strip()
+                    if not name:
+                        continue
+                    value = name.split(" - ", 1)[-1].strip()
+                    if value:
+                        unique.add(value)
+                suggestions = sorted(unique)
+        except (OSError, json.JSONDecodeError):
+            suggestions = []
+
+    return render(
+        request,
+        "routing/index.html",
+        {"location_suggestions": suggestions},
+    )
 
 
 @csrf_exempt

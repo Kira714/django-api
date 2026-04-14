@@ -103,11 +103,11 @@
       <div class="grid">
         <div>
           <label for="start">Start location</label>
-          <input id="start" value="Denver, CO" />
+          <input id="start" list="locationOptions" value="Denver, CO" />
         </div>
         <div>
           <label for="finish">Finish location</label>
-          <input id="finish" value="Phoenix, AZ" />
+          <input id="finish" list="locationOptions" value="Phoenix, AZ" />
         </div>
         <div>
           <label for="maxRange">Max range miles (optional)</label>
@@ -130,6 +130,11 @@
       <p id="status" class="meta"></p>
       <p id="error" class="error"></p>
     </div>
+    <datalist id="locationOptions">
+      {% for location in location_suggestions %}
+      <option value="{{ location }}"></option>
+      {% endfor %}
+    </datalist>
 
     <div class="card">
       <h3>Trip Summary</h3>
