@@ -13,22 +13,25 @@ It also serves a built-in frontend UI at `/` where you can manually enter trip a
 
 It is designed to run in two practical modes:
 - **Local development**: Docker Compose + PostgreSQL.
-- **Cloud deploy (Render single container)**: SQLite + automatic station reload/sync on boot.
+- **Single-container runtime**: SQLite + automatic station reload/sync on boot.
 
 ---
 
 ## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
+- [Why This Project](#why-this-project)
 - [Tech Stack](#tech-stack)
+- [API Endpoints](#api-endpoints)
+- [Routing & Pricing Use Cases](#routing--pricing-use-cases)
+- [Data Model & ORM](#data-model--orm)
+- [Open-Source Components](#open-source-components)
 - [Request / Response Flow](#request--response-flow)
 - [Fuel Optimisation Algorithm](#fuel-optimisation-algorithm)
 - [Accuracy Analysis](#accuracy-analysis)
 - [Project Structure](#project-structure)
 - [Setup & Run](#setup--run)
 - [Docker (local PostgreSQL)](#docker-local-postgresql)
-- [Deploy to Render](#deploy-to-render)
-- [Test Live API (Render)](#test-live-api-render)
 - [API Reference](#api-reference)
 - [Full Response Example](#full-response-example)
 - [Running Tests](#running-tests)
@@ -44,7 +47,7 @@ graph TD
     View["Django View\nPOST /api/route/plan/"]
     Geocoder["Geocoder\nNominatim OSM"]
     Router["Routing Engine\nGraphHopper primary\nOSRM fallback"]
-    DB["DB (SQLite on Render / Postgres in Docker)\nFuelStation table"]
+    DB["DB (SQLite single-container / Postgres in Docker)\nFuelStation table"]
     CSV["Fuel prices CSV\nstate average sync"]
     Cache["In-Memory Cache\nLocMemCache\ngeocodes plus routes"]
     Optimizer["Fuel Optimiser\nGreedy Look-ahead"]
@@ -77,7 +80,7 @@ graph TD
 
 - Solves a real planning problem: fuel spend can vary dramatically by stop choice.
 - Uses resilient routing: GraphHopper primary with automatic OSRM fallback.
-- Keeps deployment simple: one-service Render deploy works without external DB.
+- Keeps deployment simple: single-service runtime works without external DB.
 - Produces frontend-ready map output: route + stops in a single GeoJSON payload.
 - Supports customizable vehicle configs without forcing extra fields.
 
@@ -91,11 +94,114 @@ graph TD
 | **Primary Routing** | [GraphHopper API](https://graphhopper.com/) | Open-source engine, free tier (500 req/day), returns GeoJSON directly, production-grade |
 | **Fallback Routing** | [OSRM](https://project-osrm.org/) public server | Zero config, no API key, C++ engine — millisecond queries |
 | **Geocoding** | [Nominatim](https://nominatim.openstreetmap.org/) (OpenStreetMap) | 100% free, no key, global coverage |
-| **Database** | PostgreSQL 16 (Docker local) / SQLite (Render single-container) | Auto-detected from `DB_HOST` and `DATABASE_URL`; falls back to SQLite |
+| **Database** | PostgreSQL 16 (Docker local) / SQLite (single-container mode) | Auto-detected from `DB_HOST` and `DATABASE_URL`; falls back to SQLite |
 | **Caching** | Django LocMemCache | Geocodes cached 24h, routes cached 1h — eliminates repeat API hits |
 | **Map data** | GeoJSON `FeatureCollection` | Standard format — drop directly into Leaflet, MapLibre, Deck.gl |
 | **Fuel data** | `stations.json` + assessment CSV sync | Real station coordinates + CSV-based state average prices |
 | **Containerisation** | Docker Compose | PostgreSQL + Django in one `docker compose up` |
+
+---
+
+## API Endpoints
+
+Base path: `/api/route/`
+
+| Endpoint | Method | Purpose | Typical use |
+|---|---|---|---|
+| `/api/route/plan/` | `POST` | Plan route using existing DB prices (CSV-synced state averages) | Stable/default planning mode |
+| `/api/route/plan/eia/` | `POST` | Refresh DB prices from EIA first, then plan route | “Most recent available” state-level price mode |
+
+Both endpoints return the same response shape:
+- `start`, `finish`
+- `vehicle`
+- `route`
+- `fuel_stops`
+- `total_fuel_cost`
+- `map_data` (GeoJSON)
+- `warnings`
+
+---
+
+## Routing & Pricing Use Cases
+
+### GraphHopper vs OSRM routing
+
+- **GraphHopper primary** (`GRAPHHOPPER_API_KEY` set): use when you want higher reliability and production-like routing behavior.
+- **OSRM fallback** (no key or upstream failure): great for demos and zero-key operation.
+
+### CSV pricing endpoint (`/plan/`)
+
+- Best when you need deterministic behavior tied to your assessment dataset.
+- Good for repeatable testing and benchmark comparisons.
+- No external pricing dependency at request time.
+
+### EIA pricing endpoint (`/plan/eia/`)
+
+- Best when you want near-live state-level pricing before route calculation.
+- Useful for “refresh and plan now” workflows.
+- Requires `EIA_API_KEY`; if unavailable/invalid, request returns an error.
+
+---
+
+## Fallback Behavior
+
+### Routing fallback chain
+
+1. If `GRAPHHOPPER_API_KEY` is configured, the API tries **GraphHopper** first.
+2. If GraphHopper is unavailable, over quota, or errors, it falls back to **OSRM public server**.
+3. If both upstream routing providers fail, the request returns `502`.
+
+### Pricing fallback behavior
+
+- **`/api/route/plan/`** uses prices already present in the DB (typically synced from the assessment CSV).
+- **`/api/route/plan/eia/`** attempts an immediate EIA refresh before planning.
+  - If EIA sync succeeds, fresh EIA state prices are used.
+  - If EIA sync fails (missing key, upstream error, invalid response), request returns `400/502` with error details.
+- If a state has no matching price row in the selected source, existing station prices are preserved.
+
+### Geocoding fallback behavior
+
+- Geocoding uses **Nominatim** for both start and finish.
+- Successful geocodes are cached for 24h to reduce external dependency calls.
+- If geocoding fails for either endpoint, request returns `502`.
+
+### Database/runtime fallback behavior
+
+- Database selection priority:
+  1. `DATABASE_URL`
+  2. `DB_HOST` + `DB_*`
+  3. SQLite fallback
+- If no station rows exist, route planning returns a validation error until `load_fuel_stations` is run.
+
+---
+
+## Data Model & ORM
+
+The project uses Django ORM with a single core entity:
+
+- `FuelStation`
+  - `station_id` (unique)
+  - `name`
+  - `latitude`, `longitude`
+  - `state`
+  - `price_per_gallon`
+
+Why ORM helps here:
+- clean model-level schema evolution via migrations,
+- portable DB support (SQLite or PostgreSQL),
+- efficient filtering/updating for route-adjacent and state-level price operations.
+
+---
+
+## Open-Source Components
+
+- **Django** (web framework + ORM)
+- **GraphHopper** (open-source routing engine with hosted API)
+- **OSRM** (open-source routing engine)
+- **OpenStreetMap + Nominatim** (geocoding/data)
+- **Leaflet** (frontend map rendering)
+- **CARTO basemaps** (tile layer in UI)
+- **Gunicorn + WhiteNoise** (production app serving)
 
 ---
 
@@ -353,121 +459,6 @@ gunicorn fuel_route_planner.wsgi:application --bind 0.0.0.0:${PORT:-8000}
 
 ---
 
-## Deploy to Render
-
-This project is configured for a single Render web service using SQLite (no external database required).
-
-### What you need to bring
-
-| Item | Where to get it |
-|---|---|
-| GitHub repo with this code pushed to it | [github.com](https://github.com) |
-| Render account | [render.com/register](https://render.com/register) |
-| GraphHopper API key | [graphhopper.com/dashboard](https://graphhopper.com/dashboard) → "Get API Key" (free) |
-| Fuel prices CSV file | `fuel-prices-for-be-assessment.csv` in repo root |
-
----
-
-### Step-by-step deployment
-
-```mermaid
-flowchart TD
-    A[Push code to GitHub] --> B[Login to render.com]
-    B --> C[New then Blueprint]
-    C --> D[Connect GitHub repo\nRender reads render.yaml]
-    D --> E[Render creates Web service]
-    E --> F[Go to Environment tab]
-    F --> G[Set GRAPHHOPPER_API_KEY]
-    G --> H[Deploy latest commit]
-    H --> I[build.sh runs\npip install, migrate\nload_fuel_stations]
-    I --> J[start.sh runs\nsync_fuel_prices + gunicorn]
-    J --> K[Copy your onrender.com URL\nand hit the API]
-```
-
-#### 1. Push code to GitHub
-
-```bash
-git init          # if not already a git repo
-git add .
-git commit -m "initial commit"
-git remote add origin https://github.com/YOUR_USERNAME/fuel-route-planner.git
-git push -u origin main
-```
-
-#### 2. Create a Blueprint on Render
-
-1. Go to **[render.com](https://render.com)** → log in
-2. Click **New +** in the top-right
-3. Select **Blueprint**
-4. Click **Connect a repository** → authorise GitHub → select your repo
-5. Render reads `render.yaml` automatically and shows one service: **fuel-route-planner** (Web Service)
-6. Click **Apply**
-
-#### 3. Set your environment keys
-
-After the blueprint deploys:
-
-1. In the Render dashboard → click **fuel-route-planner** (web service)
-2. Go to the **Environment** tab
-3. Set `GRAPHHOPPER_API_KEY`
-4. Optional: set `FUEL_PRICES_CSV_PATH` if using a custom CSV location
-5. Click **Save Changes**
-6. Render auto-redeploys — watch the **Logs** tab
-
-#### 4. Verify it's working
-
-Once deploy shows **Live**, your URL will be:
-```
-https://fuel-route-planner.onrender.com
-```
-
-Hit it:
-```bash
-curl -X POST https://fuel-route-planner.onrender.com/api/route/plan/ \
-  -H "Content-Type: application/json" \
-  -d '{"start": "New York, NY", "finish": "Los Angeles, CA"}'
-```
-
----
-
-### What `render.yaml` does
-
-```yaml
-services:
-  - type: web
-    name: fuel-route-planner
-    runtime: python
-    buildCommand: "./build.sh"       # runs once per deploy
-    startCommand: "./start.sh"
-
-    envVars:
-      - key: DJANGO_SECRET_KEY
-        generateValue: true          # Render generates a secure random value
-      - key: FUEL_PRICES_CSV_PATH
-        value: "fuel-prices-for-be-assessment.csv"
-
-```
-
-### What `build.sh` does (runs on every deploy)
-
-```bash
-pip install -r requirements.txt
-python manage.py collectstatic --no-input   # WhiteNoise serves admin/static files
-python manage.py migrate                    # apply DB migrations
-python manage.py load_fuel_stations         # upsert stations.json rows
-```
-
----
-
-### Render notes
-
-| Resource | Free limit | Impact |
-|---|---|---|
-| Web service | Spins down after 15 min inactivity | First request after idle takes ~30s (cold start) |
-| SQLite | Container filesystem | Data is not durable across container rebuild/redeploys (safe for this demo because stations reload each boot) |
-
----
-
 ## API Reference
 
 ### `POST /api/route/plan/`
@@ -517,7 +508,7 @@ python manage.py load_fuel_stations         # upsert stations.json rows
 #### cURL
 
 ```bash
-curl -X POST https://fuel-route-planner.onrender.com/api/route/plan/ \
+curl -X POST http://localhost:8000/api/route/plan/ \
   -H "Content-Type: application/json" \
   -d '{
     "start": "Denver, CO",
@@ -683,28 +674,6 @@ Override via nested vehicle object:
 | `warnings[]` | Runtime warnings — which engine was used, expiry/SLA notices, static price disclaimer |
 
 ---
-
-## Test Live API (Render)
-
-Live endpoint:
-
-`https://fuel-route-planner.onrender.com/api/route/plan/`
-
-Live frontend UI:
-
-`https://fuel-route-planner.onrender.com/`
-
-Quick test request:
-
-```bash
-curl -X POST https://fuel-route-planner.onrender.com/api/route/plan/ \
-  -H "Content-Type: application/json" \
-  -d '{"start":"Austin, TX","finish":"Dallas, TX"}'
-```
-
-Example successful response in Postman:
-
-![Live API test response](./screenshot.png)
 
 ### Rendering the map (Leaflet example)
 
